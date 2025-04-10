@@ -1,0 +1,6 @@
+datasets
+node_modules
+.DS_Store
+scripts
+memo
+package-lock.json
