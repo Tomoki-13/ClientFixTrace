@@ -21,17 +21,13 @@ export const cloneRepo = async (repo: string, clone_dir: string): Promise<string
     output_json.createOutputDirectory(uni_clientDir);
     let cloneCommand:string = '';
     uni_clientDir = path.join(uni_clientDir, repoName);
-
-    
     // リポジトリのディレクトリが存在するか確認
     if (!fs.existsSync(uni_clientDir)) {
         try {
             output_json.createOutputDirectory(uni_clientDir);
             cloneCommand = `git clone ${repoUrl} ${uni_clientDir}`;
-            console.log(`Cloning repository: ${repoUrl}`);
             await execAsync(cloneCommand);
             console.log(`Successfully cloned: ${repo}`);
-            console.log(`Repository already exists: ${repo}`);
         } catch (error: any) {
             throw new Error(`Error cloning repository ${repo}: ${error.stderr || error.message}`);
         }

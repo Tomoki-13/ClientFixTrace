@@ -15,12 +15,12 @@ export const getVersion =(repoPath: string,libName: string): string  =>{
             return verNum;
         }
     } else {
-        //console.log('no package.json');
         return 'no';
     }
     return 'no';
 }
 
+//package.jsonのパスを取得
 const findPackageJson=(dir: string): string | null =>{
     const filePath = path.join(dir, 'package.json');
     if(fs.existsSync(filePath)) {
@@ -33,7 +33,7 @@ const findPackageJson=(dir: string): string | null =>{
     return findPackageJson(parentDir);
 }
 
-//
+//バージョン抽出
 const checkDepend = (packageJsonPath: string,libName: string): string|undefined=>{
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     if(packageJson.dependencies && packageJson.dependencies[libName]) {
@@ -45,3 +45,6 @@ const checkDepend = (packageJsonPath: string,libName: string): string|undefined=
         return 'no lib';
     }
 }
+
+// テスト環境のときだけ export
+export const _privateForTest = { checkDepend, findPackageJson};
