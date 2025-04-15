@@ -1,8 +1,20 @@
 {
+  "name": "changeversion",
+  "version": "0.0.1",
+  "description": "",
+  "main": "jest.config.js",
   "dependencies": {
     "fs": "^0.0.1-security"
   },
+  "scripts": {
+    "test": "jest ./src/__tests__/"
+  },
   "devDependencies": {
-    "@types/node": "^22.14.0"
-  }
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.14.0",
+    "ts-jest": "^29.3.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
