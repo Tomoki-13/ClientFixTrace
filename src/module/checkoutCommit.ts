@@ -16,8 +16,9 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
     process.chdir(repoPath);
     const branchName = getDefaultBranch();
     //古い→新しい順にコミットを取得
-    const package_commits = execSync('git rev-list --reverse HEAD --all -- package.json').toString().split('\n');
-    console.log(`package.jsonのコミット数:`, package_commits.length);
+    const package_commits = execSync('git rev-list --reverse HEAD --all -- package.json').toString().split('\n').filter(Boolean);
+    // console.log(`package.jsonのコミット数:`, package_commits.length);
+    // console.log(`package.jsonのコミット数:`, package_commits);
     
     let num = 0;
     for(const [index, commit] of package_commits.entries()) {
@@ -26,11 +27,11 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
         try{
             const type = execSync(`git cat-file -t ${commit}`).toString().trim();
             if (type !== 'commit') {
-                console.log(`無効なコミット: ${commit}（タイプ: ${type}） スキップします`);
+                //console.log(`無効なコミット: ${commit}（タイプ: ${type}） スキップします`);
                 continue;
             }
         } catch (err) {
-            console.log(`コミット ${commit} は存在しません。スキップ`);
+            //console.log(`コミット ${commit} は存在しません。スキップ`);
             continue;
         }
 
@@ -42,14 +43,13 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
 
             //ライブラリを調査
             let verNum:string = getVersion(repoPath, libName);
-            if(verNum.length > 0) {
+            if(verNum.length > 0 && verNum !== 'no') {
                 // 同じバージョンでなければ追加
                 if(verHistory.length === 0 || verHistory.at(-1)?.version != verNum || verNum == 'no lib') {
                     verHistory.push({ version: verNum, commit: commit });
                 }
             }
             num++;
-
         } catch (error) {
             console.error(`コミット ${commit} に切り替え中にエラーが発生しました:`, error);
             continue;
@@ -58,9 +58,9 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
     //初期状態への回帰
     try{
         execSync(`git checkout ${branchName}`, { stdio: 'inherit' });
-        console.log(`${branchName} ブランチに戻りました`);
+        //console.log(`${branchName} ブランチに戻りました`);
     } catch (err) {
-        console.error(`${branchName} ブランチに戻るのに失敗しました`, err);
+        //console.error(`${branchName} ブランチに戻るのに失敗しました`, err);
     }
 
     // console.log(`切り替え数:`, num);
