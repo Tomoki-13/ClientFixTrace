@@ -1,7 +1,9 @@
-import { rejects } from "assert";
 import { VersionPair } from "../types/VersionPair";
+import fs from "fs";
+import path from 'path';
+import output_json from "../utils/output_json";
 //[[1.1.0,2.0.0,2.1.1],[2.0.0,3.0.0,4.0.0,5.0.0]]のようなクライアントごとのバージョン結果が出力
-export const create_version_pairs = (verList: string[][]): VersionPair[] => {
+export const create_version_pairs = (verList: string[][],libName:string): VersionPair[] => {
     let result_pairs: VersionPair[] = [];
 
     //出現度調査のためのペアを作成 例：[[['1.0.0','2.0.0','3.0.0']]→[[1.0.0,2.0.0],[2.0.0,3.0.0]]
@@ -42,7 +44,14 @@ export const create_version_pairs = (verList: string[][]): VersionPair[] => {
             count: pairCount.get(JSON.stringify(element)) || 0
         });
     });
+    // 出力先のパスを取得
+    const outputDir:string = path.resolve(process.cwd(), '../datasets/output/'); 
+    output_json.createOutputDirectory(outputDir);
+    const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'result_pairs(600client)');
+    // JSONデータをファイルに書き込む
+    fs.writeFileSync(outputPath, JSON.stringify(result_pairs, null, 2));
 
+    console.log('result_pairs:',result_pairs);
     return result_pairs;
 }
 

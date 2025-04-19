@@ -42,7 +42,7 @@ const checkDepend = (packageJsonPath: string,libName: string): string|undefined=
             return versionNum;
         }
     }else{
-        return 'no lib';
+        return 'no';
     }
 }
 

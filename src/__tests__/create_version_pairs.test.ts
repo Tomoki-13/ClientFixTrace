@@ -1,4 +1,4 @@
-import {_privateForTest} from '../module/create_version_pairs';
+import {_privateForTest} from '../core/create_version_pairs';
 
 describe('create_version_pairs.ts test', () => {
     test('private judge_up_or_down', () => {
