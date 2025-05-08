@@ -3,17 +3,33 @@ import fs from "fs";
 import path from 'path';
 import output_json from "../utils/output_json";
 //[[1.1.0,2.0.0,2.1.1],[2.0.0,3.0.0,4.0.0,5.0.0]]のようなクライアントごとのバージョン結果が出力
-export const create_version_pairs = (verList: string[][],libName:string): VersionPair[] => {
+//クライアントごとにバージョン履歴を取得する 0：クライアント内の重複あり　１：クライアント内の重複なし
+export const create_version_pairs = (verList: string[][],libName:string,mode:number = 0): VersionPair[] => {
     let result_pairs: VersionPair[] = [];
 
-    //出現度調査のためのペアを作成 例：[[['1.0.0','2.0.0','3.0.0']]→[[1.0.0,2.0.0],[2.0.0,3.0.0]]
+    //出現度調査のためのペアを作成 例：[['1.0.0','2.0.0','3.0.0']]→[[1.0.0,2.0.0],[2.0.0,3.0.0]]
     let pairs:string[][] = [];
-    for(const ver of verList) {
-        for(let i = 0; i < ver.length; i++) {
-            if(ver.length < i + 2) {
-                break;   
+    if(mode === 0) {
+        for(const ver of verList) {
+            for(let i = 0; i < ver.length; i++) {
+                if(ver.length < i + 2) {
+                    break;   
+                }
+                pairs.push(ver.slice(i, i + 2))
             }
-            pairs.push(ver.slice(i, i + 2))
+        }
+    }else if(mode === 1) {
+        //クライアントごとにペア作り
+        for(const ver of verList) {
+            let uni_pairs: string[][] = [];
+            for(let i = 0; i < ver.length; i++) {
+                if(ver.length < i + 2) {
+                    break;   
+                }
+                uni_pairs.push(ver.slice(i, i + 2))
+            }
+            //クライアント内で[[1.1.1,2.0.0],[1.1.1,2.0.0]]→[[1.1.1,2.0.0]]のような重複を削除
+            pairs = pairs.concat(removeDuplicate_two(uni_pairs));
         }
     }
 
@@ -45,7 +61,7 @@ export const create_version_pairs = (verList: string[][],libName:string): Versio
         });
     });
     // 出力先のパスを取得
-    const outputDir:string = path.resolve(process.cwd(), '../datasets/output/'); 
+    const outputDir:string = path.resolve(process.cwd(), '../output/'+libName); 
     output_json.createOutputDirectory(outputDir);
     const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'result_pairs(600client)');
     // JSONデータをファイルに書き込む
