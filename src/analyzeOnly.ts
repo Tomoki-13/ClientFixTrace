@@ -5,11 +5,12 @@ import { create_version_pairs } from "./core/create_version_pairs";
 
 (async () => {
     const libName = 'uuid';
-    const data:Client_Ver[] = await loadJsonData_Client_Ver('../datasets/output/uuid_version_history_2025-04-15-01-02-30.json');
+    const data:Client_Ver[] = await loadJsonData_Client_Ver('');
     //inputList：[[クライアントごと],[...]]全体のバージョン履歴
     let inputList:string[][] = [];
     data.forEach((element) => {
         let tmp_strArray:string[] = [];
+        console.log('element:',element.verList);
         element.verList.forEach((ver) => {
             tmp_strArray.push(ver.version);
         });

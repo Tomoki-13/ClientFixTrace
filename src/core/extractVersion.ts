@@ -26,7 +26,8 @@ export const extractVersion = async (client_list:string[],libName:string): Promi
         try{
             let repoPath = await cloneRepo(client,cloneDir);
             let c_data:Client_Ver = await checkoutCommit(repoPath, libName);
-            if(c_data) {
+            //バージョン数が最低でも2以上のものを取得　変更しているものに限定
+            if(c_data && c_data.verList.length > 1) {
                 verHistory =  verHistory.concat(c_data);
             }
             process.chdir(std_Dir);
@@ -41,9 +42,9 @@ export const extractVersion = async (client_list:string[],libName:string): Promi
         }
     }
     // 出力先のパスを取得
-    const outputDir:string = path.resolve(process.cwd(), '../datasets/output/'); 
+    const outputDir:string = path.resolve(process.cwd(), '../output/'+libName); 
     output_json.createOutputDirectory(outputDir);
-    const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'version_history(600)');
+    const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString());
     // JSONデータをファイルに書き込む
     fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
     console.log('verHistory:',verHistory);
