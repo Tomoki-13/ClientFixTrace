@@ -44,7 +44,9 @@ export const extractVersion = async (client_list:string[],libName:string): Promi
     // 出力先のパスを取得
     const outputDir:string = path.resolve(process.cwd(), '../output/'+libName); 
     output_json.createOutputDirectory(outputDir);
-    const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString());
+    console.log('client_list.length:',client_list.length);
+    // const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString());
+    const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',limit.toString());
     // JSONデータをファイルに書き込む
     fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
     console.log('verHistory:',verHistory);
