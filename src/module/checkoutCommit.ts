@@ -16,13 +16,26 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
     process.chdir(repoPath);
     const branchName = getDefaultBranch();
     //古い→新しい順にコミットを取得
-    const package_commits = execSync('git rev-list --reverse HEAD --all -- package.json').toString().split('\n').filter(Boolean);
+    //マージコミットに実際に含まれる変更のみ対象
+    // const package_commits = execSync('git log --merges --reverse --pretty=format:"%H" -- package.json').toString().split('\n').filter(Boolean);
     // console.log(`package.jsonのコミット数:`, package_commits.length);
-    // console.log(`package.jsonのコミット数:`, package_commits);
-    
+    //マージされていないコミットも対象
+    const package_json = execSync('git rev-list --reverse HEAD --all -- package.json').toString().split('\n').filter(Boolean);
+    console.log(`package.jsonのコミット数:`, package_json.length);
+    //マージされたものに選別
+    const package_commits = package_json.filter(commit => {
+        try {
+          // `HEAD` に含まれていれば、少なくとも1つのマージで取り込まれたとみなす
+          const branches = execSync(`git branch --contains ${commit}`).toString();
+          return branches.includes('*') || branches.includes('main') || branches.includes('master');
+        } catch {
+          return false;
+        }
+    });
+    console.log(`package_commitsのコミット数:`, package_commits.length);
     let num = 0;
     for(const [index, commit] of package_commits.entries()) {
-        console.log(`コミット${index + 1}: ${commit}`);
+        // console.log(`コミット${index + 1}: ${commit}`);
         //コミットが存在するか確認
         try{
             const type = execSync(`git cat-file -t ${commit}`).toString().trim();
@@ -62,9 +75,6 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
     } catch (err) {
         //console.error(`${branchName} ブランチに戻るのに失敗しました`, err);
     }
-
-    // console.log(`切り替え数:`, num);
-    // console.log(`バージョンリスト:`, verHistory);
 
     //出力の整形
     let c_ver:Client_Ver = {client:repoPath.split('/').slice(-2).join('/'),verList:verHistory} 
