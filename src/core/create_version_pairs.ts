@@ -61,9 +61,9 @@ export const create_version_pairs = (verList: string[][],libName:string,mode:num
         });
     });
     // 出力先のパスを取得
-    const outputDir:string = path.resolve(process.cwd(), '../output/'+libName); 
+    const outputDir:string = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName); 
     output_json.createOutputDirectory(outputDir);
-    const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'result_pairs(600client)');
+    const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'result_pairs');
     // JSONデータをファイルに書き込む
     fs.writeFileSync(outputPath, JSON.stringify(result_pairs, null, 2));
 

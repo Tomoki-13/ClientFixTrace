@@ -12,15 +12,26 @@ import output_json from "./utils/output_json";
     const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
     // const data:Item[] = await loadJsonData_Item('../datasets/sample.json');
     const libName = 'uuid';
+    let preLibVersion = '7.0.3';
+    let libVersion = '8.0.0-beta.0';
+
+
     // ライブラリを使用しているクライアントのリストを取得
-    let client_list = data.filter(item => item.L__nameWithOwner.includes(libName)).map(item => item.S__nameWithOwner);
-    console.log(client_list.length);
-    client_list = [...new Set(client_list)];
-    console.log(client_list.length);
-    //extractVersionでクライアントを200に制限
-    let verData:Client_Ver[] = await extractVersion(client_list,libName);
+    let client_list:string[] = [];
+    let verData:Client_Ver[] = [];
+    if(libVersion === '0') {//ライブラリ単位
+        client_list = data.filter(item => item.L__nameWithOwner.includes(libName)).map(item => item.S__nameWithOwner);
+        client_list = [...new Set(client_list)];
+        verData = await extractVersion(client_list,libName);
+    }else if(libVersion !== '0') {//バージョンごと
+        let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preLibVersion)&&item.state.includes("success")).map(item => item.S__nameWithOwner);
+        let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)&&item.state.includes("success")).map(item => item.S__nameWithOwner);
+        client_list = list2.filter(value => list1.includes(value));
+        client_list = [...new Set(client_list)];
+        verData = await extractVersion(client_list,libName,libVersion);
+    }
+
     let verPairs:string[][] = [];
-    
     verData.forEach((element) => {
         let tmp_strArray:string[] = [];
         //console.log('element:',element.verList);
@@ -33,16 +44,16 @@ import output_json from "./utils/output_json";
     });
     let pairs:VersionPair[] = create_version_pairs(verPairs,libName,1);
     console.log(pairs);
-    Classify_types(pairs,libName);
+
+    //update, downgrade, sameの分類
+    Classify_types(pairs,libName,libVersion);
 })();
 
-function Classify_types(data: VersionPair[], libName: string): void {
+//クライアントのバージョンペアを分類する
+function Classify_types(data: VersionPair[], libName: string,libVersion:string = '0'): void {
     data = [...data].sort((a, b) => b.count - a.count);
-    
-    
-    // 例: 2025-04-19
     const date = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    let outDir = path.join('../output/sortData', libName, date);
+    let outDir = path.join('../output/sortData', libName+libVersion, date);
     output_json.createOutputDirectory(outDir);
     
     //種別によるフィルタリング
