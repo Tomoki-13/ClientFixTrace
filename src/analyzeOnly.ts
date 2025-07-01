@@ -5,6 +5,7 @@ import { create_version_pairs } from "./core/create_version_pairs";
 
 (async () => {
     const libName = 'uuid';
+    //cloneAndextractOnly.tsで取得したクライアントのバージョン履歴を読み込む
     const data:Client_Ver[] = await loadJsonData_Client_Ver('');
     //inputList：[[クライアントごと],[...]]全体のバージョン履歴 クライアントのないでの重複も含む
     let inputList:string[][] = [];
@@ -18,8 +19,6 @@ import { create_version_pairs } from "./core/create_version_pairs";
         }
         inputList.push(tmp_strArray);
     });
-    // console.log('inputList:',inputList);
-    //console.log('inputList:',inputList);
     let pairs:VersionPair[] = create_version_pairs(inputList,libName,1);
     console.log(pairs);
 })();
