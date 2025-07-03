@@ -4,7 +4,7 @@ import * as path from 'path';
 const createOutputDirectory = (dirPath: string): void => {
     if(!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
-        console.log(dirPath);
+        // console.log(dirPath);
     }
 };
 

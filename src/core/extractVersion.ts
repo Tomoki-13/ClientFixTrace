@@ -7,7 +7,8 @@ import { Client_Ver } from "../types/VersionCommits";
 
 // リポジトリを順番にクローン
 //libVersionはファイル名を変更するためだけに使用(client_listでフィルタリング済み)
-export const extractVersion = async (client_list:string[],libName:string,libVersion:string = '0'): Promise<Client_Ver[]>  => {
+export const extractVersion = async (client_list:string[],libName:string,libVersion:string = '0',state:string = ''):
+    Promise<Client_Ver[]> => {
     //process.cwd() == src
     let std_Dir:string = path.resolve(process.cwd(), '../clientRepos/'); 
     // 出力先ディレクトリの作成
@@ -51,11 +52,14 @@ export const extractVersion = async (client_list:string[],libName:string,libVers
         outputDir = path.join(outputDir, libVersion.toString());
         output_json.createOutputDirectory(outputDir);
     }
-    console.log('client_list.length:',client_list.length);
-    const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString());
+    let outputPath = 'file1';
+    if(state && state.length > 0) {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString()+'-'+state);
+    }else {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString());
+    }
     //const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',limit.toString());
     // JSONデータをファイルに書き込む
     fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
-    console.log('verHistory:',verHistory);
     return verHistory;
 };

@@ -14,6 +14,7 @@ import output_json from "./utils/output_json";
     const libName = 'uuid';
     let preLibVersion = '7.0.3';
     let libVersion = '8.0.0-beta.0';
+    let state = "success";
 
 
     // ライブラリを使用しているクライアントのリストを取得
@@ -24,12 +25,28 @@ import output_json from "./utils/output_json";
         client_list = [...new Set(client_list)];
         verData = await extractVersion(client_list,libName);
     }else if(libVersion !== '0') {//バージョンごと
-        let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preLibVersion)&&item.state.includes("success")).map(item => item.S__nameWithOwner);
-        let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)&&item.state.includes("success")).map(item => item.S__nameWithOwner);
-        client_list = list2.filter(value => list1.includes(value));
+        if(state.length === 0) {
+            client_list = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)).map(item => item.S__nameWithOwner);
+        }else {
+            let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preLibVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
+            let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
+            client_list = list2.filter(value => list1.includes(value));
+        }
         client_list = [...new Set(client_list)];
-        verData = await extractVersion(client_list,libName,libVersion);
+        verData = await extractVersion(client_list,libName);
     }
+
+    let outputDir:string = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName);
+    output_json.createOutputDirectory(outputDir);
+    if(libVersion !== '0') {
+        outputDir = path.join(outputDir, libVersion.toString());
+        output_json.createOutputDirectory(outputDir);
+    }
+    let outputPath = '';
+    if(state.length === 0) {
+        output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString()+'-'+state);
+    }
+    fs.writeFileSync(outputPath, JSON.stringify(verData, null, 2));
 
     let verPairs:string[][] = [];
     verData.forEach((element) => {
