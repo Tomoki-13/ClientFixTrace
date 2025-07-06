@@ -1,100 +1,93 @@
 import fs from "fs";
+import path from "path";
 import { execSync } from 'child_process';
 import { Client_Ver, VersionCommits } from "../types/VersionCommits";
 import { getVersion } from "./getVersion";
 
-//クライアントのパスを入力し，バージョン遷移を出力
+// クライアントのパスを入力し、バージョン遷移を出力
 export const checkoutCommit = async (repoPath: string, libName: string): Promise<Client_Ver> => {
-    let verHistory:VersionCommits[] = [];
-
-    //リポジトリが存在するか確認
-    if(!fs.existsSync(repoPath)) {
-        throw new Error("指定されたリポジトリディレクトリが存在しません");
+    // リポジトリが存在しない場合はエラー
+    if (!fs.existsSync(repoPath)) {
+        throw new Error(`指定されたリポジトリディレクトリが存在しません: ${repoPath}`);
     }
 
-    //リポジトリのディレクトリに移動
+    // カレントディレクトリをリポジトリのパスに設定
+    // これにより、以降のgitコマンドが正しいリポジトリで実行される
+    const originalDir = process.cwd(); // 元のディレクトリを記憶
     process.chdir(repoPath);
-    const branchName = getDefaultBranch();
-    //古い→新しい順にコミットを取得
-    //マージコミットに実際に含まれる変更のみ対象
-    // const package_commits = execSync('git log --merges --reverse --pretty=format:"%H" -- package.json').toString().split('\n').filter(Boolean);
-    // console.log(`package.jsonのコミット数:`, package_commits.length);
-    //マージされていないコミットも対象
-    const package_json = execSync('git rev-list --reverse HEAD --all -- package.json').toString().split('\n').filter(Boolean);
-    console.log(`package.jsonのコミット数:`, package_json.length);
-    //マージされたものに選別
-    const package_commits = package_json.filter(commit => {
-        try {
-          // `HEAD` に含まれていれば、少なくとも1つのマージで取り込まれたとみなす
-          const branches = execSync(`git branch --contains ${commit}`).toString();
-          return branches.includes('*') || branches.includes('main') || branches.includes('master');
-        } catch {
-          return false;
+    console.log(`現在のディレクトリ: ${process.cwd()}`);
+    console.log(`リポジトリパス: ${repoPath}`);
+    let verHistory: VersionCommits[] = [];
+    const clientName = repoPath.split('/').slice(-2).join('/');
+    if (process.cwd() === repoPath) {
+        console.log('true');
+    }
+    
+    // スクリプトの最後に必ず元の状態に戻すためのtry...finallyブロック
+    try {
+        const branchName = getDefaultBranch(repoPath);
+
+        // デフォルトブランチの履歴に沿って、package.jsonが変更されたコミットを古い順に取得
+        const command = `git rev-list --reverse ${branchName} -- package.json`;
+        const package_commits = execSync(command).toString().split('\n').filter(Boolean);
+        console.log(`package.jsonのコミット数:`, package_commits.length);
+
+        if (package_commits.length === 0) {
+            console.warn("package.jsonのコミットが見つかりませんでした。");
+            return { client: clientName, verList: [] };
         }
-    });
-    console.log(`package_commitsのコミット数:`, package_commits.length);
-    let num = 0;
-    for(const [index, commit] of package_commits.entries()) {
-        // console.log(`コミット${index + 1}: ${commit}`);
-        //コミットが存在するか確認
-        try{
-            const type = execSync(`git cat-file -t ${commit}`).toString().trim();
-            if (type !== 'commit') {
-                //console.log(`無効なコミット: ${commit}（タイプ: ${type}） スキップします`);
+
+        for (const commit of package_commits) {
+            try {
+                // --- Gitチェックアウトエラーの防止 ---
+                execSync(`git reset --hard HEAD`, { cwd: repoPath, stdio: 'ignore' });
+                execSync(`git clean -fd`, { cwd: repoPath, stdio: 'ignore' });
+                execSync(`git checkout -f ${commit}`, { cwd: repoPath, stdio: 'pipe' });
+                // getVersion内でJSONパースエラーが発生しても、ここでキャッチして処理を続行
+                const verNum: string = getVersion(repoPath, libName);
+
+                // 有効なバージョンが取得できた場合のみ履歴に追加
+                if (verNum.length > 0 && verNum !== 'no') {
+                    // 履歴が空、または直前のバージョンと異なる場合のみ追加
+                    if (verHistory.length === 0 || verHistory.at(-1)?.version !== verNum) {
+                        verHistory.push({ version: verNum, commit: commit });
+                    }
+                }
+            } catch (error) {
+                // チェックアウトやバージョン取得中にエラーが発生した場合はログに出力してスキップ
+                console.error(`コミット ${commit} の処理中にエラーが発生しました。スキップします。`, error instanceof Error ? error.message : error);
                 continue;
             }
-        } catch (err) {
-            //console.log(`コミット ${commit} は存在しません。スキップ`);
-            continue;
         }
 
-        try{
-            //作業ツリーを強制的にリセットしてから checkout
-            execSync(`git reset --hard`, { stdio: 'ignore' });
+    } finally {
+        // --- スクリプトの最後に必ず元の状態に戻す ---
+        try {
+            const branchName = getDefaultBranch(repoPath);
+            execSync(`git reset --hard HEAD`, { stdio: 'ignore' });
             execSync(`git clean -fd`, { stdio: 'ignore' });
-            execSync(`git checkout ${commit}`, { stdio: 'pipe' });
-
-            //ライブラリを調査
-            let verNum:string = getVersion(repoPath, libName);
-            if(verNum.length > 0 && verNum !== 'no') {
-                // 同じバージョンでなければ追加
-                if(verHistory.length === 0 || verHistory.at(-1)?.version != verNum || verNum == 'no lib') {
-                    verHistory.push({ version: verNum, commit: commit });
-                }
-            }
-            num++;
-        } catch (error) {
-            console.error(`コミット ${commit} に切り替え中にエラーが発生しました:`, error);
-            continue;
+            execSync(`git checkout -f ${branchName}`, { stdio: 'inherit' });
+        } catch (err) {
+            console.error(`元のブランチに戻る処理に失敗しました。`, err);
         }
-    };
-    //初期状態への回帰
-    try{
-        execSync(`git checkout ${branchName}`, { stdio: 'inherit' });
-        //console.log(`${branchName} ブランチに戻りました`);
-    } catch (err) {
-        //console.error(`${branchName} ブランチに戻るのに失敗しました`, err);
+        process.chdir(originalDir);
     }
-
-    //出力の整形
-    let c_ver:Client_Ver = {client:repoPath.split('/').slice(-2).join('/'),verList:verHistory} 
-    return c_ver;
+    return { client: clientName, verList: verHistory };
 }
-
-const getDefaultBranch = (): string => {
+const getDefaultBranch = (repoPath: string): string => {
     try {
-        execSync('git rev-parse --verify main', { stdio: 'ignore' });
+        execSync('git rev-parse --verify main', { cwd: repoPath, stdio: 'ignore' });
         return 'main';
     } catch {
         try {
-            execSync('git rev-parse --verify master', { stdio: 'ignore' });
+            execSync('git rev-parse --verify master', { cwd: repoPath, stdio: 'ignore' });
             return 'master';
         } catch {
             try {
-                const ref = execSync('git symbolic-ref refs/remotes/origin/HEAD').toString().trim();
+                const ref = execSync('git symbolic-ref refs/remotes/origin/HEAD', { cwd: repoPath }).toString().trim();
                 return ref.replace('refs/remotes/origin/', '');
             } catch {
-                throw new Error('main でも master でもブランチが見つかりませんでした');
+                throw new Error(`[${repoPath}] main でも master でもブランチが見つかりませんでした`);
             }
         }
     }

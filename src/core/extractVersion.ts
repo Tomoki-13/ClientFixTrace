@@ -34,6 +34,11 @@ export const extractVersion = async (client_list:string[],libName:string,libVers
         // }
         try{
             let repoPath = await cloneRepo(client,cloneDir);
+            //cloneRepoが失敗した場合
+            if (!repoPath) {
+                console.warn(`クローン失敗: ${client}`);
+                continue;
+            }
             let c_data:Client_Ver = await checkoutCommit(repoPath, libName);
             //バージョン数が最低でも2以上のものを取得　変更しているものに限定
             if(c_data && c_data.verList.length > 1) {
@@ -60,6 +65,6 @@ export const extractVersion = async (client_list:string[],libName:string,libVers
     }
     //const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',limit.toString());
     // JSONデータをファイルに書き込む
-    fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
+    //fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
     return verHistory;
 };
