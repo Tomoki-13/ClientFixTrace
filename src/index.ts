@@ -25,7 +25,7 @@ import output_json from "./utils/output_json";
         client_list = [...new Set(client_list)];
         verData = await extractVersion(client_list,libName);
     }else if(libVersion !== '0') {//バージョンごと
-        if(state.length === 0) {
+        if(state.length === 0 && preLibVersion.length === 0) {
             client_list = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)).map(item => item.S__nameWithOwner);
         }else {
             let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preLibVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
