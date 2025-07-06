@@ -29,17 +29,24 @@ export const cloneRepo = async (repo: string, clone_dir: string): Promise<string
             await execAsync(cloneCommand);
             await sleep(2000);
             //console.log(`Successfully cloned: ${repo}`);
-
-            const contents = fs.readdirSync(repoDir);
+            //.git のみのディレクトリも「中身なし」と見なす
+            const contents = fs.readdirSync(repoDir).filter(item => item !== '.git');
             console.log('contents.length:',contents.length);
             if (contents.length === 0) {
-                fs.rmSync(repoDir, { recursive: true, force: true });
-                console.log(`クローン後に中身が空だったため削除: ${repo}`);
+                await sleep(1000);
+                if (fs.existsSync(repoDir)) {
+                    fs.rmSync(repoDir, { recursive: true, force: true });
+                    console.log(`Directory was empty (only .git) after clone, deleted: ${repo}`);
+                }
                 return null;
             }
         } catch (error: any) {
-            fs.rmSync(repoDir, { recursive: true, force: true });
             console.log(`Error cloning repository ${repo}`);
+            if (fs.existsSync(repoDir)) {
+                await sleep(1000);
+                fs.rmSync(repoDir, { recursive: true, force: true });
+                console.log(`delete success: ${repo}`);
+            }
             return null;
         }
     }else{

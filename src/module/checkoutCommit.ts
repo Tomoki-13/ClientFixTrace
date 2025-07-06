@@ -8,18 +8,15 @@ import { getVersion } from "./getVersion";
 export const checkoutCommit = async (repoPath: string, libName: string): Promise<Client_Ver> => {
     // リポジトリが存在しない場合はエラー
     if (!fs.existsSync(repoPath)) {
-        throw new Error(`指定されたリポジトリディレクトリが存在しません: ${repoPath}`);
+        throw new Error(`no directory: ${repoPath}`);
     }
     if (!fs.existsSync(path.join(repoPath, ".git"))) {
-        throw new Error(`指定されたディレクトリは Git リポジトリではありません: ${repoPath}`);
+        throw new Error(`no git repository: ${repoPath}`);
     }
 
-    // カレントディレクトリをリポジトリのパスに設定
-    // これにより、以降のgitコマンドが正しいリポジトリで実行される
-    const originalDir = process.cwd(); // 元のディレクトリを記憶
+     // 元のディレクトリを記憶
+    const originalDir = process.cwd();
     process.chdir(repoPath);
-    console.log(`現在のディレクトリ: ${process.cwd()}`);
-    console.log(`リポジトリパス: ${repoPath}`);
     let verHistory: VersionCommits[] = [];
     const clientName = repoPath.split('/').slice(-2).join('/');
     if (process.cwd() === repoPath) {
