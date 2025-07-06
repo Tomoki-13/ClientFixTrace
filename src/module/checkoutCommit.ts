@@ -10,6 +10,9 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
     if (!fs.existsSync(repoPath)) {
         throw new Error(`指定されたリポジトリディレクトリが存在しません: ${repoPath}`);
     }
+    if (!fs.existsSync(path.join(repoPath, ".git"))) {
+        throw new Error(`指定されたディレクトリは Git リポジトリではありません: ${repoPath}`);
+    }
 
     // カレントディレクトリをリポジトリのパスに設定
     // これにより、以降のgitコマンドが正しいリポジトリで実行される
@@ -64,9 +67,9 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
         // --- スクリプトの最後に必ず元の状態に戻す ---
         try {
             const branchName = getDefaultBranch(repoPath);
-            execSync(`git reset --hard HEAD`, { stdio: 'ignore' });
-            execSync(`git clean -fd`, { stdio: 'ignore' });
-            execSync(`git checkout -f ${branchName}`, { stdio: 'inherit' });
+            execSync(`git reset --hard HEAD`, { cwd: repoPath, stdio: 'ignore' });
+            execSync(`git clean -fd`, { cwd: repoPath, stdio: 'ignore' });
+            execSync(`git checkout -f ${branchName}`, { cwd: repoPath, stdio: 'pipe' });
         } catch (err) {
             console.error(`元のブランチに戻る処理に失敗しました。`, err);
         }
