@@ -25,7 +25,7 @@ export const extractVersion = async (client_list:string[],libName:string,libNum:
 
     //ぞれぞれにクローン，チェックアウト，バージョン確認を実行
     for(const client of client_list) {
-        // if(count >= limit) { // ここを >= に変更するか
+        // if(count >= limit) {
         //     console.log(`クライアントの取得を終了します。`);
         //     break;
         // }else{
@@ -49,38 +49,5 @@ export const extractVersion = async (client_list:string[],libName:string,libNum:
             count++;
         }
     }
-
-    // 出力先のパスを取得
-    const now = new Date();
-    const date = formatDateTimeForFilename(now);
-    let outputDir:string = '';
-    if(libNum){
-        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName + '/' + libNum+'/'+date);
-        output_json.createOutputDirectory(outputDir);
-    }else{
-        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName + '/' + '/all'+'/'+date);
-    }
-
-    let outputPath = 'file1';
-    if(state && state.length > 0) {
-        outputPath = output_json.getUniqueOutputPath(outputDir, 'history-'+state,client_list.length.toString());
-    }else {
-        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history',client_list.length.toString());
-    }
-    //const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',limit.toString());
-    // JSONデータをファイルに書き込む
-    console.log('outputPath：',outputPath);
-    fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
     return verHistory;
 };
-
-function formatDateTimeForFilename(date: Date): string {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0'); // 月は0から始まるため+1
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-
-    return `${year}-${month}-${day}-${hours}-${minutes}-${seconds}`;
-}
