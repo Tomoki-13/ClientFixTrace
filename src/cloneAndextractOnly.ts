@@ -2,6 +2,9 @@ import { Item } from "./types/Item";
 import { extractVersion } from "./core/extractVersion";
 import { loadJsonData_Item } from "./utils/loadJson";
 import fs from "fs";
+import path from "path";
+import output_json from "./utils/output_json";
+import { Client_Ver } from "./types/VersionCommits";
 
 // // 特定のライブラリを使用しているクライアントのバージョン履歴を抽出する
 // (async () => {
@@ -10,29 +13,47 @@ import fs from "fs";
 //     // ライブラリ単位での収集
 //     let client_list = data.filter(item => item.L__nameWithOwner.includes(libName)).map(item => item.S__nameWithOwner);
 //     client_list = [...new Set(client_list)];
-//     extractVersion(client_list,libName);
+//     let verHistory:Client_Ver[] = await extractVersion(client_list,libName);
+
+//     const now = new Date();
+//     const date = output_json.formatDateTime(now);
+//     let outputDir:string = '';
+//     outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + 'all');
+//     output_json.createOutputDirectory(outputDir);
+//     let outputPath = 'file1';
+//     outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history',client_list.length.toString());
+//     // JSONデータをファイルに書き込む
+//     console.log('outputPath：',outputPath);
+//     fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
 // })();
-
-
-interface data_Item {
-  L__nameWithOwner: string;
-  L__version: string;
-  S__nameWithOwner: string;
-}
 
 // 例: 特定のライブラリ，バージョンのクライアントを収集 
 (async () => {
-    const data:Item[] = await loadJsonData_Item('../datasets/mydata/mydata.JSON');
     // 手動設定
     let state = "success";
     // ライブラリとバージョン範囲のリスト
-    const libVersionRanges = JSON.parse(fs.readFileSync('lib_versions.json', 'utf-8'));
+    const libVersionRanges = JSON.parse(fs.readFileSync('../datasets/mydata/mydata.JSON', 'utf-8'));
+    const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
 
     for (const { libName, preVersion, postVersion } of libVersionRanges) {
         // 特定のライブラリ，バージョンのクライアントを収集
         let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
         let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(postVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
         let client_list = list2.filter(value => list1.includes(value));
-        extractVersion(client_list,libName);
+        client_list = [...new Set(client_list)]
+        let verHistory = await extractVersion(client_list,libName,postVersion,state);
+        
+        // 出力先のパスを取得
+        const now = new Date();
+        const date = output_json.formatDateTime(now);
+        let outputDir:string = '';
+        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + postVersion);
+        output_json.createOutputDirectory(outputDir);
+
+        let outputPath = 'file1';
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history-'+state,client_list.length.toString());
+        // JSONデータをファイルに書き込む
+        console.log('outputPath：',outputPath);
+        fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
     }
 })();

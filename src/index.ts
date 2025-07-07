@@ -13,43 +13,52 @@ import output_json from "./utils/output_json";
     // const data:Item[] = await loadJsonData_Item('../datasets/sample.json');
     const libName = 'uuid';
     let preLibVersion = '7.0.3';
-    let libVersion = '8.0.0-beta.0';
+    let postLibVersion = '8.0.0-beta.0';
     let state = "success";
 
 
     // ライブラリを使用しているクライアントのリストを取得
     let client_list:string[] = [];
-    let verData:Client_Ver[] = [];
-    if(libVersion === '0') {//ライブラリ単位
+    let verHistory:Client_Ver[] = [];
+    if(postLibVersion === '0') {//ライブラリ単位
         client_list = data.filter(item => item.L__nameWithOwner.includes(libName)).map(item => item.S__nameWithOwner);
         client_list = [...new Set(client_list)];
-        verData = await extractVersion(client_list,libName);
-    }else if(libVersion !== '0') {//バージョンごと
+        verHistory= await extractVersion(client_list,libName);
+    }else if(postLibVersion !== '0') {//バージョンごと
         if(state.length === 0 && preLibVersion.length === 0) {
-            client_list = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)).map(item => item.S__nameWithOwner);
+            client_list = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(postLibVersion)).map(item => item.S__nameWithOwner);
         }else {
             let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preLibVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
-            let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(libVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
+            let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(postLibVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
             client_list = list2.filter(value => list1.includes(value));
         }
         client_list = [...new Set(client_list)];
-        verData = await extractVersion(client_list,libName);
+        verHistory= await extractVersion(client_list,libName);
     }
 
-    let outputDir:string = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName);
-    output_json.createOutputDirectory(outputDir);
-    if(libVersion !== '0') {
-        outputDir = path.join(outputDir, libVersion.toString());
-        output_json.createOutputDirectory(outputDir);
+    // 出力先のパスを取得
+    const now = new Date();
+    const date = output_json.formatDateTime(now);
+    let outputDir:string = '';
+    if(postLibVersion){
+        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + postLibVersion);
+    }else{
+        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + 'all');
     }
-    let outputPath = '';
-    if(state.length === 0) {
-        output_json.getUniqueOutputPath(outputDir, 'version_history:',client_list.length.toString()+'-'+state);
+
+    let outputPath = 'file1';
+    if(state && state.length > 0) {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history-'+state,client_list.length.toString());
+    }else {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history',client_list.length.toString());
     }
-    fs.writeFileSync(outputPath, JSON.stringify(verData, null, 2));
+    //const outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history:',limit.toString());
+    // JSONデータをファイルに書き込む
+    console.log('outputPath：',outputPath);
+    fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
 
     let verPairs:string[][] = [];
-    verData.forEach((element) => {
+    verHistory.forEach((element) => {
         let tmp_strArray:string[] = [];
         //console.log('element:',element.verList);
         if(element.verList.length > 1){
@@ -63,14 +72,14 @@ import output_json from "./utils/output_json";
     console.log(pairs);
 
     //update, downgrade, sameの分類
-    Classify_types(pairs,libName,libVersion);
+    Classify_types(pairs,libName,postLibVersion);
 })();
 
 //クライアントのバージョンペアを分類する
-function Classify_types(data: VersionPair[], libName: string,libVersion:string = '0'): void {
+function Classify_types(data: VersionPair[], libName: string,postLibVersion:string = '0'): void {
     data = [...data].sort((a, b) => b.count - a.count);
     const date = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    let outDir = path.join('../output/sortData', libName+libVersion, date);
+    let outDir = path.join('../output/sortData', libName+postLibVersion, date);
     output_json.createOutputDirectory(outDir);
     
     //種別によるフィルタリング
