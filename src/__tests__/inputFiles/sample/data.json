@@ -1,0 +1,40 @@
+[
+  {
+    "client": "1000ch/markdown-headings",
+    "verList": [
+      {
+        "version": "^6.1.0",
+        "commit": "d55dffb9b9e90c103ca4a1fbb6cb1efd92334c83"
+      },
+      {
+        "version": "^8.0.0",
+        "commit": "62045d42a7b677634ba076ce14e8e4ee52e22cf2"
+      },
+      {
+        "version": "^11.0.0",
+        "commit": "f25aa0ee1fe33cbd74636107363b1168da695a0b"
+      },
+      {
+        "version": "^8.0.0",
+        "commit": "62045d42a7b677634ba076ce14e8e4ee52e22cf2"
+      },
+      {
+        "version": "^11.0.0",
+        "commit": "f25aa0ee1fe33cbd74636107363b1168da695a0b"
+      }
+    ]
+  },
+  {
+    "client": "KeitIG/museeks",
+    "verList": [
+      {
+        "version": "^6.0.0",
+        "commit": "e154c9596c774f33215dd8261d47d8c65bb571f7"
+      },
+      {
+        "version": "^6.1.0",
+        "commit": "3a80fa0fad484c38049a85ae978162d75761c35e"
+      }
+    ]
+  }
+]
