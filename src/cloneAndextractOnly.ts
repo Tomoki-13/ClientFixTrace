@@ -18,7 +18,7 @@ import { Client_Ver } from "./types/VersionCommits";
 //     const now = new Date();
 //     const date = output_json.formatDateTime(now);
 //     let outputDir:string = '';
-//     outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + 'all');
+//     outputDir = path.resolve(process.cwd(), '../output/versionData/' + date + '/' + libName + '-' + 'all');
 //     output_json.createOutputDirectory(outputDir);
 //     let outputPath = 'file1';
 //     outputPath = output_json.getUniqueOutputPath(outputDir, 'version_history',client_list.length.toString());
@@ -31,6 +31,7 @@ import { Client_Ver } from "./types/VersionCommits";
 (async () => {
     // 手動設定
     let state = "success";
+    // let state = "failure";
     // ライブラリとバージョン範囲のリスト
     const libVersionRanges = JSON.parse(fs.readFileSync('../datasets/mydata/mydata.JSON', 'utf-8'));
     const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
@@ -47,7 +48,7 @@ import { Client_Ver } from "./types/VersionCommits";
         const now = new Date();
         const date = output_json.formatDateTime(now);
         let outputDir:string = '';
-        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + postVersion);
+        outputDir = path.resolve(process.cwd(), '../output/versionData/' + date + '/' + libName + '-' + postVersion);
         output_json.createOutputDirectory(outputDir);
 
         let outputPath = 'file1';

@@ -7,6 +7,7 @@ import { create_version_pairs } from "./core/create_version_pairs";
 import path from "path";
 import fs from "fs";
 import output_json from "./utils/output_json";
+import { extractVersionList } from "./utils/arrayOperation";
 
 (async () => {
     const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
@@ -41,9 +42,9 @@ import output_json from "./utils/output_json";
     const date = output_json.formatDateTime(now);
     let outputDir:string = '';
     if(postLibVersion){
-        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + postLibVersion);
+        outputDir = path.resolve(process.cwd(), '../output/versionData/' + date + '/' + libName + '-' + postLibVersion);
     }else{
-        outputDir = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/' + date + '/' + libName + '-' + 'all');
+        outputDir = path.resolve(process.cwd(), '../output/versionData/' + date + '/' + libName + '-' + 'all');
     }
 
     let outputPath = 'file1';
@@ -57,18 +58,17 @@ import output_json from "./utils/output_json";
     console.log('outputPath：',outputPath);
     fs.writeFileSync(outputPath, JSON.stringify(verHistory, null, 2));
 
-    let verPairs:string[][] = [];
-    verHistory.forEach((element) => {
-        let tmp_strArray:string[] = [];
-        //console.log('element:',element.verList);
-        if(element.verList.length > 1){
-            element.verList.forEach((ver) => {
-                tmp_strArray.push(ver.version);
-            });
-        }
-        verPairs.push(tmp_strArray);
-    });
+    //バージョンペアのカウント
+    let verPairs:string[][] = extractVersionList(verHistory);
     let pairs:VersionPair[] = create_version_pairs(verPairs,libName,1);
+    let outputPath_pair = 'file1';
+    if(state && state.length > 0) {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'result_pairs-','state');
+    }else {
+        outputPath = output_json.getUniqueOutputPath(outputDir, 'result_pairs','');
+    }
+    // JSONデータをファイルに書き込む
+    fs.writeFileSync(outputPath_pair, JSON.stringify(pairs, null, 2));
     console.log(pairs);
 
     //update, downgrade, sameの分類

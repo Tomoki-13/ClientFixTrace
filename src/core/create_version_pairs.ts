@@ -67,13 +67,5 @@ export const create_version_pairs = (verList: string[][],libName:string,mode:num
             count: pairCount.get(JSON.stringify(element)) || 0
         });
     });
-    // 出力先のパスを取得
-    const outputDir:string = path.resolve(process.cwd(), '../output/cloneAndextractOnly_result/'+libName); 
-    output_json.createOutputDirectory(outputDir);
-    const outputPath = output_json.getUniqueOutputPath(outputDir, libName, 'result_pairs');
-    // JSONデータをファイルに書き込む
-    fs.writeFileSync(outputPath, JSON.stringify(result_pairs, null, 2));
-
-    console.log('result_pairs:',result_pairs);
     return result_pairs;
 }
