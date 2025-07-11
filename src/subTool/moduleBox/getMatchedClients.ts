@@ -10,7 +10,6 @@ function getMatchedClients(
     rawdata_filePath: string,
     versionHistory_filePath: string,
 ): Client_Ver[] {
-    console.log("rawdata_filePath:", rawdata_filePath);
     //検出したクライアントリスト
     let trimmedClients:string[] = [];
     if(rawdata_filePath !== '') {
@@ -19,7 +18,7 @@ function getMatchedClients(
     return filterClientsByMode(versionHistory_filePath, trimmedClients);
 }
 
-// バージョンを比較する関数　baseの上or下or等しいかを判定
+// バージョンを比較する関数　baseの上or下を判定
 function isVersionGreaterOrEqual(ver: string, base: string): boolean {
     const vParts = cleanVersion(ver);
     const baseParts = cleanVersion(base);
@@ -53,9 +52,12 @@ function filterClientsByMode(
     if (trimmedClients.length === 0) {
         return verHistory;
     } else if (trimmedClients.length !== 0) {
-        return verHistory.filter(item =>
-            trimmedClients.some(trimmed => item.client.includes(trimmed))
-        );
+        let result = verHistory.filter(item => trimmedClients.some(trimmed => item.client.includes(trimmed)));
+        let res:string[] = [];
+        verHistory.forEach(element => {
+            res.push(element.client);
+        });
+        return result;
     }
     return [];
 }

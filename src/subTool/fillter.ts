@@ -8,11 +8,11 @@ import { getAllFiles } from '../utils/getAllFiles';
 import { getSubDir } from '../utils/getSubDir';
 
 async function main() {
-    //入力　MatchClientPattern[]
-    const rawdata_filePath:string[] = JSON.parse(fs.readFileSync('../../datasets/mydata/matchResult.JSON', 'utf-8'));
+    // //入力　MatchClientPattern[]
+    const rawdata_filePath:string[] = JSON.parse(fs.readFileSync('', 'utf-8'));
     //Client_Ver[]
     let versionHistory_filePath:string[] = [];
-    const alldirs: string[] = await getSubDir("../../output/versionData/2025-07-08-19-25-31");
+    const alldirs: string[] = await getSubDir("");
     for(const subdir of alldirs) {
         let pathArray = await getAllFiles(subdir);
         versionHistory_filePath = versionHistory_filePath.concat(pathArray);
@@ -20,8 +20,8 @@ async function main() {
     console.log(versionHistory_filePath);
 
     //ファイル単位の場合
-    // const rawdata_filePath:string[] =
-    // let versionHistory_filePath:string[] = [];
+    // const rawdata_filePath:string[] = [''];
+    // let versionHistory_filePath:string[] = [''];
 
     let libVersion:string[] = [];
     versionHistory_filePath.forEach(element => {
@@ -31,13 +31,14 @@ async function main() {
 
     const date = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     for (let i = 0; i < rawdata_filePath.length; i++) {
+        console.log('raw:,',rawdata_filePath[i]);
+        console.log('hist:,',versionHistory_filePath[i]);
         let matched:Client_Ver[] = getMatchedClients.getMatchedClients(rawdata_filePath[i], versionHistory_filePath[i]);
 
         const parts = versionHistory_filePath[i].split('/');
-        const result = parts.slice(-3, -1).join('/');
+        const result = parts.slice(-2, -1).join('/');
         let outDir = path.join('../../output/fillter/',date+'/'+result);
         output_json.createOutputDirectory(outDir);
-        
         fs.writeFileSync(
             output_json.getUniqueOutputPath(outDir, 'update', matched.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(fs.readFileSync(rawdata_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
             JSON.stringify(matched, null, 2)
@@ -46,7 +47,6 @@ async function main() {
         const versionFiltered:Client_Ver[] = matched.filter(item =>
             item.verList.some(ver => getMatchedClients.isVersionGreaterOrEqual(ver.version, libVersion[i]))
         );
-
 
         fs.writeFileSync(
             output_json.getUniqueOutputPath(outDir, libVersion[i] + 'update', versionFiltered.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(fs.readFileSync(rawdata_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
