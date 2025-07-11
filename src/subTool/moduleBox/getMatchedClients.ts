@@ -5,18 +5,18 @@ import { Client_Ver } from '../../types/VersionCommits';
 import { cleanVersion } from '../../utils/compareVersion';
 
 //検出されたクライアント一覧から該当するクライアントを抽出
-//rawdata_filePath1の時クライアント全体で処理
+//rawdata_filePathの時クライアント全体で処理
 function getMatchedClients(
-    rawdata_filePath1: string = '',
-    version_filePath2: string,
+    rawdata_filePath: string,
+    versionHistory_filePath: string,
 ): Client_Ver[] {
-    console.log("rawdata_filePath1:", rawdata_filePath1);
+    console.log("rawdata_filePath:", rawdata_filePath);
     //検出したクライアントリスト
     let trimmedClients:string[] = [];
-    if(rawdata_filePath1 !== '') {
-        trimmedClients = extractTrimmedClients(rawdata_filePath1);
+    if(rawdata_filePath !== '') {
+        trimmedClients = extractTrimmedClients(rawdata_filePath);
     }
-    return filterClientsByMode(version_filePath2, trimmedClients);
+    return filterClientsByMode(versionHistory_filePath, trimmedClients);
 }
 
 // バージョンを比較する関数　baseの上or下or等しいかを判定
@@ -40,7 +40,6 @@ function extractClients(data: MatchClientPattern[]): string[] {
         const parts = path.split('/');
         return parts.slice(-2).join('/');
     });
-    console.log("clientNames:", clientNames.length);
     return clientNames;
 }
 
