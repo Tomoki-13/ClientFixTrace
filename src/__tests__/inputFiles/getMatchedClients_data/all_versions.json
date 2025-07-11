@@ -1,0 +1,14 @@
+[
+  {
+    "client": "vendor/client-A",
+    "verList": [{ "ver": "1.0.0", "commit": "abc" }]
+  },
+  {
+    "client": "vendor/client-B",
+    "verList": [{ "ver": "2.1.0", "commit": "def" }]
+  },
+  {
+    "client": "vendor/client-C",
+    "verList": [{ "ver": "3.5.2", "commit": "ghi" }]
+  }
+]

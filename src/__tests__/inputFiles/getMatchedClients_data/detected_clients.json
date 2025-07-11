@@ -1,0 +1,12 @@
+[
+  {
+    "client": "full/path/to/vendor/client-A",
+    "pattern": [],
+    "detectPattern": []
+  },
+  {
+    "client": "another/path/vendor/client-C",
+    "pattern": [],
+    "detectPattern": []
+  }
+]
