@@ -36,17 +36,18 @@ import { Client_Ver } from "./types/VersionCommits";
     const libVersionRanges = JSON.parse(fs.readFileSync('../datasets/mydata/mydata.JSON', 'utf-8'));
     const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
 
+    const now = new Date();
+    const date = output_json.formatDateTime(now);
+
     for (const { libName, preVersion, postVersion } of libVersionRanges) {
         // 特定のライブラリ，バージョンのクライアントを収集
-        let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
+        let list1:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(preVersion)&&item.state.includes("success")).map(item => item.S__nameWithOwner);
         let list2:string[] = data.filter(item => item.L__nameWithOwner.includes(libName)&&item.L__version.includes(postVersion)&&item.state.includes(state)).map(item => item.S__nameWithOwner);
         let client_list = list2.filter(value => list1.includes(value));
         client_list = [...new Set(client_list)]
         let verHistory = await extractVersion(client_list,libName,postVersion,state);
         
         // 出力先のパスを取得
-        const now = new Date();
-        const date = output_json.formatDateTime(now);
         let outputDir:string = '';
         outputDir = path.resolve(process.cwd(), '../output/versionData/' + date + '/' + libName + '-' + postVersion);
         output_json.createOutputDirectory(outputDir);
