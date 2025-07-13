@@ -70,4 +70,10 @@ function extractTrimmedClients(filePath: string): string[] {
     return clientList_detected;
 }
 
-export default { getMatchedClients, isVersionGreaterOrEqual, extractClients, filterClientsByMode, extractTrimmedClients };
+export default { 
+    getMatchedClients,
+    isVersionGreaterOrEqual,
+    extractClients,
+    filterClientsByMode,
+    extractTrimmedClients,
+};
