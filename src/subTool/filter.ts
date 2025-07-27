@@ -70,7 +70,7 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
         output_json.createOutputDirectory(outDir);
 
         //フィルタリングの処理
-        if(libVersion[i] !== '0' && matchdata_path !== ''){ //全てのデータを対象に特定バージョンを超えたクライアントを取得
+        if(libVersion[i] !== '0' && matchdata_path === ''){ //全てのデータを対象に特定バージョンを超えたクライアントを取得
             const versionFiltered:Client_Ver[] = data.filter(item =>
                 item.verList.some(ver => getMatchedClients.isVersionGreaterOrEqual(ver.version, libVersion[i]))
             );
@@ -78,7 +78,7 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
                 output_json.getUniqueOutputPath(outDir, libVersion[i] + 'update', versionFiltered.length.toString()+'-' + data.length), 
                 JSON.stringify(versionFiltered, null, 2)
             );
-        }else if (matchdata_path !== '') {
+        } else if (libVersion[i] !== '0' && matchdata_path !== '') {//matchdata_pathに含まれるデータで特定バージョンを超えたクライアントを取得
             const matchedData_filePath:string[] = JSON.parse(await fs.readFile(path.resolve(__dirname, '../../datasets/mydata/filter/matchResult.json'), 'utf-8'));
             let specificVersion_data:Client_Ver[] = getMatchedClients.getMatchedClients(matchedData_filePath[i], versionHistory_filePath[i]);
             await fs.writeFile(
@@ -86,14 +86,7 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
                     specificVersion_data.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
                 JSON.stringify(specificVersion_data, null, 2)
             );
-        } else if (libVersion[i] !== '0' && matchdata_path !== '') {
-            const matchedData_filePath:string[] = JSON.parse(await fs.readFile(path.resolve(__dirname, '../../datasets/mydata/filter/matchResult.json'), 'utf-8'));
-            let specificVersion_data:Client_Ver[] = getMatchedClients.getMatchedClients(matchedData_filePath[i], versionHistory_filePath[i]);
-            await fs.writeFile(
-                output_json.getUniqueOutputPath(outDir, libVersion[i] + 'update', 
-                    specificVersion_data.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
-                JSON.stringify(specificVersion_data, null, 2)
-            );
+            
             const versionFiltered:Client_Ver[] = specificVersion_data.filter(item =>
                 item.verList.some(ver => getMatchedClients.isVersionGreaterOrEqual(ver.version, libVersion[i]))
             );
@@ -102,9 +95,13 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
                 output_json.getUniqueOutputPath(outDir,libVersion[i] + 'update', versionFiltered.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
                 JSON.stringify(versionFiltered, null, 2)
             );
-        } 
+        }else{
+            console.warn('バージョンが0のデータが存在します。');
+            return [];
+        }
     }
 }
+
 (async () => {
     await filter_isOverVersion('','');
 })();
