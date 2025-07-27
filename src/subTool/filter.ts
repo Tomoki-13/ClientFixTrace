@@ -1,9 +1,10 @@
 import * as fs from 'fs/promises';
-import { Client_Ver } from '../types/VersionCommits';
+import { Client_Ver,specificCommit } from '../types/VersionCommits';
 import * as path from 'path';
 import output_json from '../utils/output_json';
 import getMatchedClients from './moduleBox/getMatchedClients';
 import { MatchClientPattern } from '../types/Item';
+import { get_specificVer_commit } from './moduleBox/get_specificVer_commit';
 import { getAllFiles } from '../utils/getAllFiles';
 import { getSubDir } from '../utils/getSubDir';
 import { loadJsonData_Client_Ver } from '../utils/loadJson';
@@ -90,10 +91,15 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
             const versionFiltered:Client_Ver[] = specificVersion_data.filter(item =>
                 item.verList.some(ver => getMatchedClients.isVersionGreaterOrEqual(ver.version, libVersion[i]))
             );
+            const commit_data: specificCommit[] = get_specificVer_commit(versionFiltered, libVersion[i]);
             //別データに該当するどのクライアントが"特定"のバージョンに更新したか
             await fs.writeFile(
                 output_json.getUniqueOutputPath(outDir,libVersion[i] + 'update', versionFiltered.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
                 JSON.stringify(versionFiltered, null, 2)
+            );
+            await fs.writeFile(
+                output_json.getUniqueOutputPath(outDir,libVersion[i] + 'update', 'specificCommit'), 
+                JSON.stringify(commit_data, null, 2)
             );
         }else{
             console.warn('バージョンが0のデータが存在します。');
