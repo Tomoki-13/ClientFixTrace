@@ -1,34 +1,60 @@
-import fs from 'fs';
-import path from "path";
-//非同期でディレクトリ内のすべてのjsまたはtsファイルを再帰的に取得する関数
+import fs from 'fs/promises';
+import path from 'path';
 
+// 非同期でディレクトリ内のすべての js / ts / jsx / tsx ファイルを再帰的に取得する関数
 export const getAllFiles = async (directoryPath: string): Promise<string[]> => {
-    return new Promise<string[]>((resolve, reject) => {
-        fs.readdir(directoryPath, { withFileTypes: true }, async (err, files) => {
-            if(err) {
-                console.error('Error fs.readdir(directoryPath, { withFileTypes: true }, async (err, files):', err);
-                reject(err);
-                return;
-            }
-
-        const allFiles: string[] = [];
-
-        //各ファイルおよびディレクトリに対して処理
-        for(const file of files) {
-            const filePath: string = path.join(directoryPath, file.name);
-
-            //jsまたはtsファイルの場合は配列に追加 
-            if((file.isFile()) &&(file.name.endsWith(".json"))){
+    const allFiles: string[] = [];
+    try {
+        const files = await fs.readdir(directoryPath, { withFileTypes: true });
+        for (const file of files) {
+            const filePath = path.join(directoryPath, file.name);
+            if (file.isFile()) {
+                if (
+                    (file.name.endsWith('.js') ||
+                        file.name.endsWith('.ts') ||
+                        file.name.endsWith('.jsx') ||
+                        file.name.endsWith('.tsx')) &&
+                    !file.name.endsWith('.coffee') &&
+                    !file.name.endsWith('.md') &&
+                    !file.name.endsWith('.min.js') &&
+                    !file.name.endsWith('.dev.js')
+                ) {
                     allFiles.push(filePath);
-                } else if(file.isDirectory()) {
-                    //サブディレクトリの場合は再帰的に処理
-                    if(!filePath.includes('node_modules')) {
-                        const subDirectoryFiles: string[] = await getAllFiles(filePath);
-                        allFiles.push(...subDirectoryFiles);
-                    }
+                }
+            } else if (file.isDirectory()) {
+                if (!filePath.includes('node_modules')) {
+                    const subFiles = await getAllFiles(filePath);
+                    allFiles.push(...subFiles);
+                }
             }
         }
-        resolve(allFiles);
-        });
-    });
-}
+    } catch (err) {
+        console.error('Error reading directory:', err);
+        throw err;
+    }
+
+    return allFiles;
+};
+
+// 再帰的にすべてのファイルを取得する関数（フィルタなし）
+export const getAllFilesRecursively = async (targetPath: string): Promise<string[]> => {
+    const results: string[] = [];
+    const stats = await fs.stat(targetPath);
+    if (stats.isFile()) {
+        return [targetPath];
+    }
+    const entries = await fs.readdir(targetPath, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name === '.DS_Store') continue;
+
+        const fullPath = path.join(targetPath, entry.name);
+
+        if (entry.isDirectory()) {
+            const nestedFiles = await getAllFilesRecursively(fullPath);
+            results.push(...nestedFiles);
+        } else if (entry.isFile()) {
+            results.push(fullPath);
+        }
+    }
+    return results;
+};

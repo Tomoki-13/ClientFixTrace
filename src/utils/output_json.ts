@@ -17,11 +17,6 @@ const getUniqueOutputPath = (baseDir: string, baseName: string, name: string): s
     }
     return outputPath;
 };
-export default {
-    createOutputDirectory,
-    getUniqueOutputPath,
-    formatDateTime
-};
 
 function formatDateTime(date: Date): string {
     const year = date.getFullYear();
@@ -32,3 +27,9 @@ function formatDateTime(date: Date): string {
     const seconds = date.getSeconds().toString().padStart(2, '0');
     return `${year}-${month}-${day}-${hours}-${minutes}-${seconds}`;
 }
+export default {
+    createOutputDirectory,
+    getUniqueOutputPath,
+    formatDateTime
+};
+
