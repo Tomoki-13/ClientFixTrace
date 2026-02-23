@@ -1,0 +1,23 @@
+{
+  "postman.settings.dotenv-detection-notification-visibility": false,
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.enable": true,
+  "eslint.run": "onType",
+  "eslint.alwaysShowStatus": true,
+  "eslint.validate": [
+    "javascript",
+    "typescript",
+  ],
+  "css.validate": false,
+  "scss.validate": false,
+  // ESLint v9 が新しい eslint.config.jsを探しに行くのを止める
+  "eslint.useFlatConfig": false,
+  "todohighlight.keywords": [
+  "BUG",
+  "ADD",
+  "LOOK",
+]
+}

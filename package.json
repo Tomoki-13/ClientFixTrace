@@ -12,6 +12,18 @@
   "scripts": {
     "test": "jest ./src/__tests__/"
   },
+  "lint-staged": {
+    "src/**/*.{js,ts,tsx}": [
+      "eslint --max-warnings=0"
+    ],
+    "ignore": [
+      ".eslintrc.js",
+      "eslint.config.js",
+      "node_modules/",
+      "dist/",
+      "build/"
+    ]
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^22.14.0",
