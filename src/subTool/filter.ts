@@ -12,6 +12,7 @@ type LibAndVersion = {
     libName: string;
     version: string;
 };
+
 //バージョン名の抽出 ~~~/libname-0.0.0-beta.0/~~~.json → 0.0.0-beta.0
 function extractLibAndVersion(path: string): LibAndVersion | null {
     const parts = path.split('/');
@@ -51,24 +52,19 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
         }
     });
     console.log('versionHistory_filePath:',versionHistory_filePath);
-    console.log('matchdata_path:',JSON.parse(await fs.readFile(path.resolve(__dirname, matchdata_path), 'utf-8')));
-    
-    const date = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    // 日付ディレクトリの作成用
+    const dateStr = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    const baseOutputDir = path.join('../../output/filter', dateStr);
+
     for (let i = 0; i < versionHistory_filePath.length; i++) {
         let data:Client_Ver[] = loadJsonData_Client_Ver(versionHistory_filePath[i]);
-        const parts = versionHistory_filePath[i].split('/');
-        const ver = parts.slice(-2, -1).join('/');
-        const state_str = parts.slice(-1)[0];
+        const state_str = versionHistory_filePath[i];
+        const status = state_str.includes('success') ? 'success' : 
+                       state_str.includes('failure') ? 'failure' : 'mixed';
 
         //出力ファイルの区別のため
-        let outDir = '';
-        if(state_str.includes('success')){
-            outDir = path.join('../../output/filter/', date + '-success'+'/'+ver);
-        }else if(state_str.includes('failure')){
-            outDir = path.join('../../output/filter/', date + '-failure' + '/' + ver);
-        }else{
-            outDir = path.join('../../output/filter/',date + '/' + ver);
-        }
+        const outDir = path.join(baseOutputDir, libInfo[i].libName, libInfo[i].version, status);
+        output_json.createOutputDirectory(outDir);
         output_json.createOutputDirectory(outDir);
 
         //フィルタリングの処理
@@ -76,16 +72,20 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
             const versionFiltered:Client_Ver[] = data.filter(item =>
                 item.verList.some(ver => getMatchedClients.isVersionGreaterOrEqual(ver.version, libInfo[i].version))
             );
+            const countStr = `${versionFiltered.length}target-${data.length}total`;
             await fs.writeFile(
-                output_json.getUniqueOutputPath(outDir, libInfo[i].version + 'update', versionFiltered.length.toString()+'-' + data.length), 
+                output_json.getUniqueOutputPath(outDir, libInfo[i].version + 'all_clients_updated', countStr), 
                 JSON.stringify(versionFiltered, null, 2)
             );
         } else if (libInfo[i].version !== '0' && matchdata_path !== '') {//matchdata_pathに含まれるデータで特定バージョンを超えたクライアントを取得
             const matchedData_filePath:string[] = JSON.parse(await fs.readFile(path.resolve(__dirname, matchdata_path), 'utf-8'));
             let specificVersion_data:Client_Ver[] = getMatchedClients.getMatchedClients(matchedData_filePath[i], versionHistory_filePath[i]);
+
+            const matchCount = specificVersion_data.length;
+            const rawMatchCount = getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length;
+            
             await fs.writeFile(
-                output_json.getUniqueOutputPath(outDir, libInfo[i].libName+libInfo[i].version + 'update', 
-                    specificVersion_data.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
+                output_json.getUniqueOutputPath(outDir, 'matched_clients', `${matchCount}matched-${rawMatchCount}total`),
                 JSON.stringify(specificVersion_data, null, 2)
             );
             
@@ -95,15 +95,13 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
             const commit_data: specificCommit[] = get_specificVer_commit(versionFiltered, libInfo[i].version);
             //別データに該当するどのクライアントが"特定"のバージョンに更新したか
             await fs.writeFile(
-                output_json.getUniqueOutputPath(outDir,libInfo[i].libName+libInfo[i].version + 'update', versionFiltered.length.toString()+'-'+getMatchedClients.extractClients(JSON.parse(await fs.readFile(matchedData_filePath[i], 'utf-8')) as MatchClientPattern[]).length.toString()), 
+                output_json.getUniqueOutputPath(outDir, 'filtered_updated_clients', `${versionFiltered.length}target-${matchCount}matched`),
                 JSON.stringify(versionFiltered, null, 2)
             );
 
             //コミットデータは，別のディレクトリに保存
-            outDir = path.dirname(outDir) + '/specificCommit'
-            output_json.createOutputDirectory(outDir);
             await fs.writeFile(
-                output_json.getUniqueOutputPath(outDir,libInfo[i].libName+libInfo[i].version, 'update'), 
+                output_json.getUniqueOutputPath(outDir, 'commits_info', 'update'),
                 JSON.stringify(commit_data, null, 2)
             );
         }else{
@@ -115,5 +113,6 @@ async function filter_isOverVersion(verHist_path:string,matchdata_path:string = 
 
 (async () => {
     // await filter_isOverVersion('../../output/versionData/2025-07-24-19-35-24','../../datasets/mydata/filter/matchResult.json');
-    await filter_isOverVersion('../../datasets/mydata/filter/verHist_success.json','../../datasets/mydata/filter/matchResult.json');
+    await filter_isOverVersion('/Users/tomoki-i/mystudy/changeVersion/datasets/mydata/filter/verHist_success-12-20.json','../../datasets/mydata/filter/matchResult.json');
+    // await filter_isOverVersion('../../datasets/mydata/filter/verHist_failure.json','');
 })();
