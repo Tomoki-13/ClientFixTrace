@@ -18,10 +18,10 @@ output_json.createOutputDirectory(outDir);
 //種別によるフィルタリング
 console.log('update:',JSON.stringify(data.filter((item) => item.type === 'update'), null, 2));
 
-// const updateItems = data.filter(item => item.type === 'update');
-// const downgradeItems = data.filter(item => item.type === 'downgrade');
-// const sameItems = data.filter(item => item.type === 'same');
+const updateItems = data.filter(item => item.type === 'update');
+const downgradeItems = data.filter(item => item.type === 'downgrade');
+const sameItems = data.filter(item => item.type === 'same');
 
-// fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'update'), JSON.stringify(updateItems, null, 2));
-// fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'downgrade'), JSON.stringify(downgradeItems, null, 2));
-// fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'same'), JSON.stringify(sameItems, null, 2));
+fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'update'), JSON.stringify(updateItems, null, 2));
+fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'downgrade'), JSON.stringify(downgradeItems, null, 2));
+fs.writeFileSync(output_json.getUniqueOutputPath(outDir, '', 'same'), JSON.stringify(sameItems, null, 2));
