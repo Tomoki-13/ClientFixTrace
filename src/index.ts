@@ -11,7 +11,6 @@ import { extractVersionList } from "./utils/arrayOperation";
 
 (async () => {
     const data:Item[] = await loadJsonData_Item('../datasets/test_result.json');
-    // const data:Item[] = await loadJsonData_Item('../datasets/sample.json');
     const libName = 'uuid';
     let preLibVersion = '7.0.3';
     let postLibVersion = '8.0.0-beta.0';

@@ -58,3 +58,32 @@ export const getAllFilesRecursively = async (targetPath: string): Promise<string
     }
     return results;
 };
+
+// 指定されたディレクトリ内を再帰的に探索し、すべての .json ファイルを取得する関数
+export const getAllJsonFiles = async (directoryPath: string): Promise<string[]> => {
+    const jsonFiles: string[] = [];
+
+    try {
+        const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+            const fullPath = path.join(directoryPath, entry.name);
+
+            if (entry.isFile()) {
+                if (entry.name.endsWith('.json')) {
+                    jsonFiles.push(fullPath);
+                }
+            } else if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules' && entry.name !== '.git') {
+                    const nestedFiles = await getAllJsonFiles(fullPath);
+                    jsonFiles.push(...nestedFiles);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error reading directory for JSON files:', err);
+        throw err;
+    }
+
+    return jsonFiles;
+};
