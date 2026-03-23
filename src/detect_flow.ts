@@ -18,13 +18,25 @@ interface Config {
   RESULT_BASE_DIR: string;
 }
 
+//メソッド単位
+// const CONFIG: Config = {
+//   TASK_LIST_PATH: '../datasets/mydata/mydata.json',
+//   HISTORY_BASE_DIR: '../datasets/analysis_target/current/2026-02-24-08-48-48',
+//   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-02-26-15-31-06',
+//   SOURCE_CLIENT_REPOS: '../clientRepos',
+//   UPDATE_CLIENT_BASE: '../client_update',
+//   STATE: 'failure',
+//   RESULT_BASE_DIR: '../output/specificData'
+// };
+
+// 型情報あり
 const CONFIG: Config = {
   TASK_LIST_PATH: '../datasets/mydata/mydata.json',
   HISTORY_BASE_DIR: '../datasets/analysis_target/current/2026-02-24-08-48-48',
-  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-02-26-15-31-06',
+  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/fulldataSample',
   SOURCE_CLIENT_REPOS: '../clientRepos',
   UPDATE_CLIENT_BASE: '../client_update',
-  STATE: 'failure',
+  STATE: 'success',
   RESULT_BASE_DIR: '../output/specificData'
 };
 
@@ -73,13 +85,18 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
     const rbcTargetDir = rbcFiles.find(f => f.includes(`${libName}_${verKey}`))
       ? rbcFiles.find(f => f.includes(`${libName}_${verKey}`))?.split(libName + '_' + verKey)[0] + libName + '_' + verKey
       : null;
-
     if (!targetHistoryPath || !rbcTargetDir) continue;
-
     const matchFilePath = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('matchResults.json') && f.includes(CONFIG.STATE));
-    const patternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && (f.includes('detectpatternlist.json') || f.includes('patternList.json')));
+
+    // detectpatternlist.json と patternList.json を個別に探索し、優先度を保証
+    const detectPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('detectpatternlist.json'));
+    const fallbackPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('patternList.json'));
+
+    const patternFile = detectPatternFile || fallbackPatternFile;
 
     if (!matchFilePath || !patternFile) continue;
+    // detectpatternlist.json が見つかった場合は 0、それ以外（patternList.jsonのみ）の場合は 1 とする
+    const patternModeFlag = detectPatternFile ? 0 : 1;
 
     console.log(`\n--- [Analysis] ${libName}-${postVersion} ---`);
     const filteredHistory = getMatchedClients.getMatchedClients(matchFilePath, targetHistoryPath);
@@ -87,7 +104,6 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
 
     if (targets.length === 0) continue;
 
-    // 母数リストの保存
     const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${CONFIG.STATE}_list.json`);
     const exportTargets = targets.map(t => ({
       client: t.C_client,
@@ -97,10 +113,9 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
     }));
     fs.writeFileSync(commitLogPath, JSON.stringify(exportTargets, null, 2));
 
-    // パターン正規化
     const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8'));
     const rawPatterns: any[] = patternData.patterns ? patternData.patterns.map((p: any) => p.pattern) : patternData;
-    const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) => 
+    const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
       p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))
     );
 
@@ -109,15 +124,14 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
     const baseClonePath = path.resolve(process.cwd(), CONFIG.UPDATE_CLIENT_BASE, baseFolderName);
     const baseResultPath = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
 
-    // タスク開始時に一度だけ親ディレクトリを初期化
     if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
     output_json.createOutputDirectory(baseClonePath);
-
+    
     const runAnalysis = async (type: 'update' | 'release') => {
       // 内部階層: base/update または base/release
       const absCloneDir = path.resolve(baseClonePath, type);
       const absOutDir = path.resolve(baseResultPath, type);
-
+      
       // detectByPattern に渡すための相対パスを計算
       const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
 
@@ -142,9 +156,8 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
       }
 
       if (successCount > 0) {
-        console.log(`  [Detect] ${type}地点の解析実行: ${successCount}件`);
-        // 相対パスを渡すことで、結果ファイル内の記述を簡略化
-        await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, 0);
+        console.log(`  [Detect] ${type}地点の解析実行: ${successCount}件 (mode: ${patternModeFlag})`);
+        await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
       }
     };
 
