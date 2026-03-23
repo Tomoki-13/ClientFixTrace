@@ -1,5 +1,5 @@
 import { Client_Ver, specificCommit } from '../types/VersionCommits';
-import getMatchedClients from './getMatchedClients';
+import GetMatchedClients from './getMatchedClients';
 
 /**
  * 特定のバージョン以上のバージョンを持つクライアントのコミット情報を取得
@@ -9,7 +9,7 @@ import getMatchedClients from './getMatchedClients';
  * @param {string} targetVersion - 基準となるターゲットバージョン
  * @returns {specificCommit[]} 拡張されたコミット情報のリスト
  */
-export function get_specificVer_commit(
+function get(
   data: Client_Ver[],
   libName: string,
   targetVersion: string
@@ -18,9 +18,8 @@ export function get_specificVer_commit(
 
   for (const clientData of data) {
     // verListの中から、ターゲットバージョン以上の最初のインデックスを特定
-    // 既存のセマンティックバージョニング比較ロジックを使用
     const index = clientData.verList.findIndex(v =>
-      getMatchedClients.isVersionGreaterOrEqual(v.L_libVersion, targetVersion)
+      GetMatchedClients.isVersionGreaterOrEqual(v.L_libVersion, targetVersion)
     );
 
     if (index !== -1) {
@@ -41,3 +40,5 @@ export function get_specificVer_commit(
   }
   return result;
 }
+
+export default { get };

@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 // 非同期でディレクトリ内のすべての js / ts / jsx / tsx ファイルを再帰的に取得する関数
-export const getAllFiles = async (directoryPath: string): Promise<string[]> => {
+async function get(directoryPath: string): Promise<string[]> {
     const allFiles: string[] = [];
     try {
         const files = await fs.readdir(directoryPath, { withFileTypes: true });
@@ -23,7 +23,7 @@ export const getAllFiles = async (directoryPath: string): Promise<string[]> => {
                 }
             } else if (file.isDirectory()) {
                 if (!filePath.includes('node_modules')) {
-                    const subFiles = await getAllFiles(filePath);
+                    const subFiles = await get(filePath);
                     allFiles.push(...subFiles);
                 }
             }
@@ -34,10 +34,10 @@ export const getAllFiles = async (directoryPath: string): Promise<string[]> => {
     }
 
     return allFiles;
-};
+}
 
 // 再帰的にすべてのファイルを取得する関数（フィルタなし）
-export const getAllFilesRecursively = async (targetPath: string): Promise<string[]> => {
+async function getRecursively(targetPath: string): Promise<string[]> {
     const results: string[] = [];
     const stats = await fs.stat(targetPath);
     if (stats.isFile()) {
@@ -50,18 +50,18 @@ export const getAllFilesRecursively = async (targetPath: string): Promise<string
         const fullPath = path.join(targetPath, entry.name);
 
         if (entry.isDirectory()) {
-            const nestedFiles = await getAllFilesRecursively(fullPath);
+            const nestedFiles = await getRecursively(fullPath);
             results.push(...nestedFiles);
         } else if (entry.isFile()) {
             results.push(fullPath);
         }
     }
     return results;
-};
+}
 
 // 指定されたディレクトリ内を再帰的に探索し、すべての .json ファイルを取得する関数
-export const getAllJsonFiles = async (directoryPath: string): Promise<string[]> => {
-    const jsonFiles: string[] = [];
+async function getJsonFiles(directoryPath: string): Promise<string[]> {
+    const jsonFiles: string[] = [];   
 
     try {
         const entries = await fs.readdir(directoryPath, { withFileTypes: true });
@@ -75,7 +75,7 @@ export const getAllJsonFiles = async (directoryPath: string): Promise<string[]> 
                 }
             } else if (entry.isDirectory()) {
                 if (entry.name !== 'node_modules' && entry.name !== '.git') {
-                    const nestedFiles = await getAllJsonFiles(fullPath);
+                    const nestedFiles = await getJsonFiles(fullPath);
                     jsonFiles.push(...nestedFiles);
                 }
             }
@@ -86,4 +86,10 @@ export const getAllJsonFiles = async (directoryPath: string): Promise<string[]> 
     }
 
     return jsonFiles;
+}
+
+export default {
+    get,
+    getRecursively,
+    getJsonFiles
 };
