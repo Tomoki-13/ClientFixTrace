@@ -1,34 +1,25 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import fs from 'fs';
+import path from 'path';
 
-const createDir = (dirPath: string): void => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
-
-const getUniquePath = (baseDir: string, baseName: string, name: string): string => {
-  let outputPath = path.join(baseDir, `${baseName}_${name}.json`);
-  if (fs.existsSync(outputPath)) {
-    const now = new Date();
-    const date = formatDateTime(now);
-    outputPath = path.join(baseDir, `${baseName}_${name}_${date}.json`);
-  }
-  return outputPath;
-};
-
-function formatDateTime(date: Date): string {
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const seconds = date.getSeconds().toString().padStart(2, '0');
-  return `${year}-${month}-${day}-${hours}-${minutes}-${seconds}`;
+function createDir(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
 
-export default {
+function formatDateTime(date: Date): string {
+  const f = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${f(date.getMonth() + 1)}-${f(date.getDate())}-${f(date.getHours())}-${f(date.getMinutes())}-${f(date.getSeconds())}`;
+}
+
+function getUniquePath(baseDir: string, baseName: string, name: string): string {
+  let outputPath = path.join(baseDir, `${baseName}_${name}.json`);
+  if (fs.existsSync(outputPath)) {
+    outputPath = path.join(baseDir, `${baseName}_${name}_${formatDateTime(new Date())}.json`);
+  }
+  return outputPath;
+}
+
+export default { 
   createDir,
-  getUniquePath,
-  formatDateTime
+  formatDateTime,
+  getUniquePath
 };

@@ -1,10 +1,11 @@
 import { _privateForTest, getVersion } from '../git/getVersion';
 import path from 'path';
 
-//テストファイル一覧：絶対パス
+// テストファイル一覧：絶対パス
 const dirPath1 = path.join(process.cwd(), './src/__tests__/inputFiles');
 const dirPath2 = path.join(process.cwd(), './src/__tests__/inputFiles', 'samplerepo');
 const filePath1 = path.join(process.cwd(), './src/__tests__/inputFiles', 'samplerepo', 'package.json');
+
 describe('checkDepend', () => {
   test('default', () => {
     let expectedOutput = "^0.0.1-security";

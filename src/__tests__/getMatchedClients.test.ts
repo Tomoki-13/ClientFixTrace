@@ -1,11 +1,13 @@
-import * as fs from 'fs';
-import { Client_Ver } from '../types/VersionCommits';
 import { MatchClientPattern } from '../types/Item';
-import getMatchedClients from '../subTool/moduleBox/getMatchedClients';
+import GetMatchedClients from '../utils/getMatchedClients';
 
 describe('getMatchedClients', () => {
     test('getMatchedClients', () => {
-        const Output = getMatchedClients.getMatchedClients('./src/__tests__/inputFiles/getMatchedClients_data/detected_clients.json', './src/__tests__/inputFiles/getMatchedClients_data/all_versions.json');
+        // 関数名変更 getMatchedClients -> get
+        const Output = GetMatchedClients.get(
+            './src/__tests__/inputFiles/getMatchedClients_data/detected_clients.json', 
+            './src/__tests__/inputFiles/getMatchedClients_data/all_versions.json'
+        );
         let expectedOutput = [
             {
                 "client": "vendor/client-A",
@@ -28,7 +30,7 @@ describe('getMatchedClients', () => {
             ['1.2.0', '1.2.1', false],
             ['1.1.9', '1.2.0', false],
         ])('ver >= base', (ver, base, expected) => {
-            const output = getMatchedClients.isVersionGreaterOrEqual(ver, base);
+            const output = GetMatchedClients.isVersionGreaterOrEqual(ver, base);
             expect(output).toBe(expected);
         });
     });
@@ -41,7 +43,9 @@ describe('getMatchedClients', () => {
                 { client: "another/path/vendor/client-B", pattern: [], detectPattern: [] }
             ];
             const expectedOutput = ["vendor/client-A", "vendor/client-B"];
-            const output = getMatchedClients.extractClients(inputData);
+            
+            // 関数名変更 extractClients -> extract
+            const output = GetMatchedClients.extract(inputData);
             expect(output).toEqual(expectedOutput);
         });
     });

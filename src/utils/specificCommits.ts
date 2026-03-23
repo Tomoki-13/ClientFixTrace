@@ -1,40 +1,29 @@
-import { Client_Ver, specificCommit } from '../types/VersionCommits';
-import GetMatchedClients from './getMatchedClients';
+import { Client_Ver, specificCommit } from "../types/VersionCommits";
+import getMatchedClients from './getMatchedClients';
 
 /**
- * 特定のバージョン以上のバージョンを持つクライアントのコミット情報を取得
- * 更新前後のバージョン情報やターゲット情報を含める
- * * @param {Client_Ver[]} data - クライアントとそのバージョン履歴の配列
- * @param {string} libName - 検索対象のライブラリ名
- * @param {string} targetVersion - 基準となるターゲットバージョン
- * @returns {specificCommit[]} 拡張されたコミット情報のリスト
+ * 履歴データから特定のバージョンに対応するコミットペア（更新前・後）を抽出する
  */
-function get(
-  data: Client_Ver[],
-  libName: string,
-  targetVersion: string
-): specificCommit[] {
+function get(data: Client_Ver[], libName: string, targetVersion: string): specificCommit[] {
   let result: specificCommit[] = [];
-
   for (const clientData of data) {
-    // verListの中から、ターゲットバージョン以上の最初のインデックスを特定
-    const index = clientData.verList.findIndex(v =>
-      GetMatchedClients.isVersionGreaterOrEqual(v.L_libVersion, targetVersion)
+    // ターゲットバージョン以上の最初のインデックスを特定
+    const index = clientData.verList.findIndex((v) =>
+      getMatchedClients.isVersionGreaterOrEqual(v.L_libVersion, targetVersion)
     );
 
     if (index !== -1) {
-      const postEntry = clientData.verList[index];
-      // 更新前のエントリ（一つ前のインデックス）を取得
-      const preEntry = index > 0 ? clientData.verList[index - 1] : null;
+      const post = clientData.verList[index];
+      const pre = index > 0 ? clientData.verList[index - 1] : null;
 
       result.push({
         C_client: clientData.C_client,
         L_libName: libName,
         L_targetVersion: targetVersion,
-        L_preLibVersion: preEntry ? preEntry.L_libVersion : "unknown/initial",
-        L_postLibVersion: postEntry.L_libVersion,
-        C_commitID: postEntry.C_commitID,
-        C_tagCommitID: postEntry.C_tagCommitID
+        L_preLibVersion: pre ? pre.L_libVersion : "unknown/initial",
+        L_postLibVersion: post.L_libVersion,
+        C_commitID: post.C_commitID,
+        C_tagCommitID: post.C_tagCommitID
       });
     }
   }

@@ -1,5 +1,8 @@
 import fs from "fs";
 
+/**
+ * クローン結果のCSVを解析し、成功したタスクのみを抽出する
+ */
 function parse(filePath: string): { libName: string; preVersion: string; postVersion: string }[] {
   const taskList: { libName: string; preVersion: string; postVersion: string }[] = [];
   const csvContent = fs.readFileSync(filePath, 'utf-8');
@@ -14,20 +17,16 @@ function parse(filePath: string): { libName: string; preVersion: string; postVer
 
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(',').map(c => c.trim());
-      if (libIdx !== -1 && postIdx !== -1 && statusIdx !== -1) {
-        if (cols[statusIdx] === 'SUCCESS') {
-          taskList.push({
-            libName: cols[libIdx],
-            preVersion: cols[preIdx],
-            postVersion: cols[postIdx]
-          });
-        }
+      if (cols[statusIdx] === 'SUCCESS') {
+        taskList.push({
+          libName: cols[libIdx],
+          preVersion: cols[preIdx],
+          postVersion: cols[postIdx]
+        });
       }
     }
   }
   return taskList;
 }
 
-export default {
-  parse
-};
+export default { parse };

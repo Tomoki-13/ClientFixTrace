@@ -1,24 +1,29 @@
 import { Client_Ver, specificCommit } from "../types/VersionCommits";
-import GetMatchedClients from './getMatchedClients';
+import versionUtil from "./versionUtil";
 
+/**
+ * 履歴データから特定のバージョンに対応するコミットペア（更新前・後）を抽出する
+ * 使われていないように見えますが、全履歴(Master)から特定のペア(Task)を切り出す際に必須です。
+ */
 function get(data: Client_Ver[], libName: string, targetVersion: string): specificCommit[] {
   let result: specificCommit[] = [];
   for (const clientData of data) {
-    const raw = clientData as any;
-    const index = raw.verList.findIndex((v: any) =>
-      GetMatchedClients.isVersionGreaterOrEqual(v.L_libVersion || v.libVersion, targetVersion)
+    const index = clientData.verList.findIndex((v) =>
+      versionUtil.isGreaterOrEqual(v.L_libVersion, targetVersion)
     );
+
     if (index !== -1) {
-      const post = raw.verList[index];
-      const pre = index > 0 ? raw.verList[index - 1] : null;
+      const post = clientData.verList[index];
+      const pre = index > 0 ? clientData.verList[index - 1] : null;
+
       result.push({
-        C_client: raw.C_client || raw.client,
+        C_client: clientData.C_client,
         L_libName: libName,
         L_targetVersion: targetVersion,
-        L_preLibVersion: pre ? (pre.L_libVersion || pre.libVersion) : "unknown/initial",
-        L_postLibVersion: post.L_libVersion || post.libVersion,
-        C_commitID: post.C_commitID || post.commitID,
-        C_tagCommitID: post.C_tagCommitID || post.tagCommitID
+        L_preLibVersion: pre ? pre.L_libVersion : "unknown/initial",
+        L_postLibVersion: post.L_libVersion,
+        C_commitID: post.C_commitID,
+        C_tagCommitID: post.C_tagCommitID
       });
     }
   }
