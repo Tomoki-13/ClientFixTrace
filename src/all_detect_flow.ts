@@ -1,25 +1,49 @@
 import fs from "fs";
 import path from "path";
+import readline from "readline";
 import { execSync } from "child_process";
-import { Client_Ver, specificCommit } from "./types/VersionCommits";
 import { detectByPattern } from "../R-BC/src/core/detectByPattern";
-import output_json from "./utils/output_json";
-import { getAllFilesRecursively } from "./utils/getAllFiles";
 import { ExtractFunctionCallsResult } from "../R-BC/src/types/ExtractFunctionCallsResult";
-import getMatchedClients from './utils/getMatchedClients';
 
-interface Config {
-  CURRENT_BASE_DIR: string; // currentディレクトリのルート（R-BCからの結果を使用）
-  RBC_DATA_ROOT: string;
-  SOURCE_CLIENT_REPOS: string;
-  BASE_CLONE_DIR: string;
-  STATES: string[]; // success, failure の両方を処理できるように配列化
-  RESULT_BASE_DIR: string;
-}
+import { Client_Ver, specificCommit } from "./types/VersionCommits";
+import StatusBar from "./utils/statusBar";
+import GetTargetCommits from "./utils/targetCommits";
+import ParseCloneSummary from "./utils/cloneSummary";
+import OutputJson from "./utils/output_json";
+import GetAllFiles from "./utils/getAllFiles";
+import GetMatchedClients from './utils/getMatchedClients';
 
-// 実行時の統計情報を保持するための型
+// ==========================================
+// INPUT: 実行設定 (ここのパス環境に合わせて書き換えてください)
+// ==========================================
+const CONFIG = {
+  // 1. verData(抽出処理) が出力した CSV のパス (解析対象の特定に使用)
+  CLONE_SUMMARY_CSV: '../output/cloneResult/2026-03-16-17-00-35/clone_summary.csv',
+
+  // 2. verData が出力した履歴データが格納されているディレクトリ
+  VERSION_DATA_DIR: '../output/versionData/2026-03-16-17-00-35-all',
+
+  // 3. パターンデータ (R-BCの結果) が格納されているディレクトリ
+  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-03-16-12-19-37-all',
+
+  // 4.verData(抽出処理) がクローンしたクライアントリポジトリの格納先
+  SOURCE_CLIENT_REPOS: '../clonedata/repos/clientRepos_all',
+
+  // 5. 解析実行時に一時的にリポジトリをコピー＆チェックアウトする作業ディレクトリ
+  BASE_CLONE_DIR: '../clonedata/repos/analysis_temp_repos',
+
+  // 6. detectByPattern の解析結果および集計CSVを出力するディレクトリ
+  RESULT_BASE_DIR: '../output/specificData',
+
+  // 解析対象とする状態
+  STATES: ['success', 'failure']
+};
+// ==========================================
+
+// ステータスバーの初期化
+StatusBar.init();
+
 interface ExecutionStat {
-  sourceDir: string;
   library: string;
   preVersion: string;
   postVersion: string;
@@ -30,267 +54,178 @@ interface ExecutionStat {
   detectedClientsCount: number;
 }
 
-const CONFIG: Config = {
-  CURRENT_BASE_DIR: '../datasets/analysis_target/current/all-sample', 
-  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-03-02-15-34-51',
-  SOURCE_CLIENT_REPOS: '../clientRepos',
-  BASE_CLONE_DIR: '../client_update_alldata', 
-  STATES: ['success', 'failure'],
-  RESULT_BASE_DIR: '../output/specificData'
-};
-
-export function get_target_commits(data: Client_Ver[], libName: string, targetVersion: string): specificCommit[] {
-  let result: specificCommit[] = [];
-  for (const clientData of data) {
-    const raw = clientData as any;
-    const index = raw.verList.findIndex((v: any) =>
-      getMatchedClients.isVersionGreaterOrEqual(v.L_libVersion || v.libVersion, targetVersion)
-    );
-    if (index !== -1) {
-      const post = raw.verList[index];
-      const pre = index > 0 ? raw.verList[index - 1] : null;
-      result.push({
-        C_client: raw.C_client || raw.client,
-        L_libName: libName,
-        L_targetVersion: targetVersion,
-        L_preLibVersion: pre ? (pre.L_libVersion || pre.libVersion) : "unknown/initial",
-        L_postLibVersion: post.L_libVersion || post.libVersion,
-        C_commitID: post.C_commitID || post.commitID,
-        C_tagCommitID: post.C_tagCommitID || post.tagCommitID
-      });
-    }
-  }
-  return result;
-}
-
-// 入力ファイルをパースしてタスクリストを生成する関数
-function parseInputData(filePath: string): { libName: string; preVersion: string; postVersion: string }[] {
-  const taskList: { libName: string; preVersion: string; postVersion: string }[] = [];
-  const ext = path.extname(filePath).toLowerCase();
-
-  if (ext === '.json') {
-    const rawData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    for (const item of rawData) {
-      taskList.push({
-        libName: item.libName,
-        preVersion: item.preVersion || 'N/A',
-        postVersion: item.postVersion || item.newVersion
-      });
-    }
-  } else if (ext === '.csv') {
-    const csvContent = fs.readFileSync(filePath, 'utf-8');
-    const lines = csvContent.split('\n').filter(l => l.trim().length > 0);
-    if (lines.length > 0) {
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      const libIdx = headers.indexOf('library');
-      const preIdx = headers.indexOf('preversion');
-      const postIdx = headers.indexOf('postversion');
-
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.trim());
-        if (libIdx !== -1 && postIdx !== -1) {
-          taskList.push({
-            libName: cols[libIdx],
-            preVersion: preIdx !== -1 ? cols[preIdx] : 'N/A',
-            postVersion: cols[postIdx]
-          });
-        }
-      }
-    }
-  } else {
-    throw new Error(`Unsupported file format: ${ext}`);
-  }
-  return taskList;
-}
-
 (async () => {
-  // current以下のディレクトリを一覧取得
-  const targetDirs = fs.readdirSync(CONFIG.CURRENT_BASE_DIR)
-    .map(name => path.join(CONFIG.CURRENT_BASE_DIR, name))
-    .filter(p => fs.statSync(p).isDirectory());
+  console.log(`[Init] Reading clone summary CSV from: ${CONFIG.CLONE_SUMMARY_CSV}`);
+  if (!fs.existsSync(CONFIG.CLONE_SUMMARY_CSV)) {
+    console.error(`[Error] CSV file not found! Please check CONFIG.CLONE_SUMMARY_CSV.`);
+    StatusBar.finish();
+    return;
+  }
 
-  const rbcFiles = await getAllFilesRecursively(CONFIG.RBC_DATA_ROOT);
-  const dateStr = output_json.formatDateTime(new Date());
+  const taskList = ParseCloneSummary.parse(CONFIG.CLONE_SUMMARY_CSV);
+  console.log(`[Init] Found ${taskList.length} valid tasks to analyze.`);
 
+  if (taskList.length === 0) {
+    console.log(`[Exit] No successful tasks found in CSV.`);
+    StatusBar.finish();
+    return;
+  }
+
+  console.log(`[Init] Scanning RBC Pattern files...`);
+  const rbcFiles = await GetAllFiles.getRecursively(CONFIG.RBC_DATA_ROOT);
+
+  const dateStr = OutputJson.formatDateTime(new Date());
   const summaryOutDir = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'specific-commits');
-  output_json.createOutputDirectory(summaryOutDir);
+  OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExecutionStat[] = [];
+  const totalSteps = taskList.length * CONFIG.STATES.length;
+  let currentStep = 0;
 
-  for (const currentDir of targetDirs) {
-    const dirName = path.basename(currentDir);
-    console.log(`\n======================================================`);
-    console.log(` Processing Directory: ${dirName}`);
-    console.log(`======================================================`);
+  for (const task of taskList) {
+    const { libName, preVersion, postVersion } = task;
+    const verKey = postVersion.replace(/[\.-]/g, '');
 
-    // ディレクトリ直下の execution_summary_*.csv を自動探索
-    const filesInDir = fs.readdirSync(currentDir);
-    const csvFileName = filesInDir.find(f => f.startsWith('execution_summary_') && f.endsWith('.csv'));
+    for (const targetState of CONFIG.STATES) {
+      currentStep++;
+      const progressPercent = ((currentStep / totalSteps) * 100).toFixed(1);
 
-    if (!csvFileName) {
-      console.log(`  [Skip] No 'execution_summary_*.csv' found in ${dirName}.`);
-      continue;
-    }
+      StatusBar.update(`⏳ [Progress: ${currentStep}/${totalSteps} (${progressPercent}%)] Processing: ${libName} ${preVersion} -> ${postVersion} (${targetState})`);
 
-    const csvPath = path.join(currentDir, csvFileName);
-    console.log(`  Found Target CSV: ${csvFileName}`);
-    
-    const taskList = parseInputData(csvPath);
-    const historyFiles = await getAllFilesRecursively(currentDir); // 探索対象をこのディレクトリ内に限定
+      const stateDataDir = path.join(CONFIG.VERSION_DATA_DIR, targetState, `${libName}-${postVersion}`);
+      if (!fs.existsSync(stateDataDir)) continue;
 
-    // このディレクトリ用のクローンベースパス（混ざらないように隔離）
-    const currentCloneBase = path.resolve(process.cwd(), CONFIG.BASE_CLONE_DIR, dirName);
+      const historyFiles = fs.readdirSync(stateDataDir);
+      const historyFileName = historyFiles.find(f => f.startsWith(`version_history-${targetState}`) && f.endsWith('.json'));
+      if (!historyFileName) continue;
 
-    for (const task of taskList) {
-      const { libName, preVersion, postVersion } = task;
-      const verKey = postVersion.replace(/[\.-]/g, '');
+      const targetHistoryPath = path.join(stateDataDir, historyFileName);
 
-      for (const targetState of CONFIG.STATES) {
-        // 意図しないCSV等を読み込まないよう .endsWith('.json') で保護
-        const targetHistoryPath = historyFiles.find(f =>
-          f.includes(targetState) && f.includes(`${libName}-${postVersion}`) &&
-          path.basename(f).startsWith(`version_history-${targetState}`) &&
-          f.endsWith('.json')
-        );
+      const rbcTargetDirBase = rbcFiles.find(f => f.includes(`${libName}_${verKey}`));
+      if (!rbcTargetDirBase) continue;
+      const rbcTargetDir = rbcTargetDirBase.split(`${libName}_${verKey}`)[0] + `${libName}_${verKey}`;
 
-        const rbcTargetDir = rbcFiles.find(f => f.includes(`${libName}_${verKey}`))
-          ? rbcFiles.find(f => f.includes(`${libName}_${verKey}`))?.split(libName + '_' + verKey)[0] + libName + '_' + verKey
-          : null;
+      const matchFilePath = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('matchResults.json') && f.includes(targetState));
+      const detectPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('detectpatternlist.json') && f.endsWith('.json'));
+      const fallbackPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('patternList.json') && f.endsWith('.json'));
+      const patternFile = detectPatternFile || fallbackPatternFile;
 
-        if (!targetHistoryPath || !rbcTargetDir) continue;
-        const matchFilePath = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('matchResults.json') && f.includes(targetState));
+      if (!matchFilePath || !patternFile) continue;
 
-        // detectpatternlist.json と patternList.json を個別に探索し、優先度を保証
-        const detectPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('detectpatternlist.json') && f.endsWith('.json'));
-        const fallbackPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('patternList.json') && f.endsWith('.json'));
+      const patternModeFlag = detectPatternFile ? 0 : 1;
 
-        const patternFile = detectPatternFile || fallbackPatternFile;
+      const filteredHistory = GetMatchedClients.get(matchFilePath, targetHistoryPath);
+      const targets = GetTargetCommits.get(filteredHistory, libName, postVersion);
 
-        if (!matchFilePath || !patternFile) continue;
-        // detectpatternlist.json が見つかった場合は 0、それ以外（patternList.jsonのみ）の場合は 1 とする
-        const patternModeFlag = detectPatternFile ? 0 : 1;
+      if (targets.length === 0) continue;
 
-        console.log(`\n--- [Analysis] ${libName}-${postVersion} (${targetState}) ---`);
-        const filteredHistory = getMatchedClients.getMatchedClients(matchFilePath, targetHistoryPath);
-        const targets = get_target_commits(filteredHistory, libName, postVersion);
+      const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${targetState}_list.json`);
+      const exportTargets = targets.map(t => ({
+        client: t.C_client,
+        libVersion: t.L_postLibVersion,
+        commitID: t.C_commitID,
+        tagCommitID: t.C_tagCommitID
+      }));
+      fs.writeFileSync(commitLogPath, JSON.stringify(exportTargets, null, 2));
 
-        if (targets.length === 0) {
-          console.log(`  No target commits found for ${targetState}. Skipping.`);
-          continue;
+      const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8'));
+      const rawPatterns: any[] = patternData.patterns ? patternData.patterns.map((p: any) => p.pattern) : patternData;
+      const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
+        p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))
+      );
+
+      const baseFolderName = `${libName}-${postVersion}_${targetState}`;
+      const baseClonePath = path.resolve(CONFIG.BASE_CLONE_DIR, baseFolderName);
+      const baseResultPath = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
+
+      if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
+      OutputJson.createDir(baseClonePath);
+
+      const runAnalysis = async (type: 'update' | 'release') => {
+        const absCloneDir = path.resolve(baseClonePath, type);
+        const absOutDir = path.resolve(baseResultPath, type);
+        const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
+
+        OutputJson.createDir(absCloneDir);
+        OutputJson.createDir(absOutDir);
+
+        let successCount = 0;
+        for (const item of targets) {
+          const targetHash = type === 'update' ? item.C_commitID : item.C_tagCommitID;
+          if (!targetHash || targetHash === "no-subsequent-release") continue;
+
+          const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, verKey, targetState, item.C_client);
+          const destPath = path.resolve(absCloneDir, item.C_client);
+
+          try {
+            if (!fs.existsSync(sourcePath)) continue;
+            fs.mkdirSync(path.dirname(destPath), { recursive: true });
+            fs.cpSync(sourcePath, destPath, { recursive: true });
+            execSync(`git -C "${destPath}" checkout -f ${targetHash}`, { stdio: 'ignore' });
+            successCount++;
+          } catch (err) { }
         }
 
-        const commitLogPath = path.resolve(summaryOutDir, `${dirName}_${libName}-${postVersion}_${targetState}_list.json`);
-        const exportTargets = targets.map(t => ({
-          client: t.C_client,
-          libVersion: t.L_postLibVersion,
-          commitID: t.C_commitID,
-          tagCommitID: t.C_tagCommitID
-        }));
-        fs.writeFileSync(commitLogPath, JSON.stringify(exportTargets, null, 2));
+        let detectedCount = 0;
+        if (successCount > 0) {
+          console.log(`  [Detect] Executing detectByPattern for ${type} (Clients: ${successCount}, PatternMode: ${patternModeFlag})`);
+          const detectResult = await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
+          detectedCount = detectResult.totalClients;
 
-        const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8'));
-        const rawPatterns: any[] = patternData.patterns ? patternData.patterns.map((p: any) => p.pattern) : patternData;
-        const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
-          p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))
-        );
-
-        // 階層化したディレクトリ名の定義
-        const baseFolderName = `${libName}-${postVersion}_${targetState}`;
-        // クローン先のパスを分離
-        const baseClonePath = path.resolve(currentCloneBase, baseFolderName);
-        const baseResultPath = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, dirName, 'results', baseFolderName);
-
-        if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
-        output_json.createOutputDirectory(baseClonePath);
-
-        const runAnalysis = async (type: 'update' | 'release') => {
-          // 内部階層: base/update または base/release
-          const absCloneDir = path.resolve(baseClonePath, type);
-          const absOutDir = path.resolve(baseResultPath, type);
-
-          // detectByPattern に渡すための相対パスを計算
-          const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
-
-          output_json.createOutputDirectory(absCloneDir);
-          output_json.createOutputDirectory(absOutDir);
-
-          let successCount = 0;
-          for (const item of targets) {
-            const targetHash = type === 'update' ? item.C_commitID : item.C_tagCommitID;
-            if (!targetHash || targetHash === "no-subsequent-release") continue;
-
-            const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
-            const destPath = path.resolve(absCloneDir, item.C_client);
-
-            try {
-              if (!fs.existsSync(sourcePath)) continue;
-              fs.mkdirSync(path.dirname(destPath), { recursive: true });
-              fs.cpSync(sourcePath, destPath, { recursive: true });
-              execSync(`git -C "${destPath}" checkout -f ${targetHash}`, { stdio: 'ignore' });
-              successCount++;
-            } catch (err) { }
+          // ==========================================
+          // 出力された JSON ファイル名の末尾に件数を付与する
+          // ==========================================
+          const outputFiles = fs.readdirSync(absOutDir).filter(f => f.endsWith('.json'));
+          for (const file of outputFiles) {
+            const oldPath = path.join(absOutDir, file);
+            const ext = path.extname(file);
+            const base = path.basename(file, ext);
+            // 例: update_detect.json -> update_detect_5.json
+            const newPath = path.join(absOutDir, `${base}_${detectedCount}${ext}`);
+            fs.renameSync(oldPath, newPath);
           }
+        }
 
-          let detectedCount = 0;
-          if (successCount > 0) {
-            console.log(`  [Detect] ${type}地点の解析実行: ${successCount}件 (mode: ${patternModeFlag})`);
-            const detectResult = await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
-            // 先ほどの修正に合わせて scannedDirCount ではなく detectResult.totalClients 等の利用を想定（ここでは元々のロジック通り totalClients を取得）
-            detectedCount = detectResult.totalClients;
-          }
+        executionStats.push({
+          library: libName,
+          preVersion: preVersion,
+          postVersion: postVersion,
+          state: targetState,
+          phase: type,
+          targetClientsCount: targets.length,
+          successfullyClonedCount: successCount,
+          detectedClientsCount: detectedCount
+        });
+      };
 
-          // CSV出力用の統計データを保存
-          executionStats.push({
-            sourceDir: dirName,
-            library: libName,
-            preVersion: preVersion,
-            postVersion: postVersion,
-            state: targetState,
-            phase: type,
-            targetClientsCount: targets.length,
-            successfullyClonedCount: successCount,
-            detectedClientsCount: detectedCount
-          });
-        };
-
-        await runAnalysis('update');
-        await runAnalysis('release');
-      }
+      await runAnalysis('update');
+      await runAnalysis('release');
     }
   }
 
-  // ----------------------------------------
-  // CSVファイルの出力処理 (3種類)
-  // ----------------------------------------
+  StatusBar.finish();
+
   if (executionStats.length > 0) {
     const safeDateStr = dateStr.replace(/[: ]/g, '_');
-    // SourceDir を先頭に追加
-    const csvHeader = 'SourceDir,Library,PreVersion,PostVersion,State,Phase,TargetClientsCount,SuccessfullyClonedCount,DetectedClientsCount\n';
+    const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,TargetClientsCount,SuccessfullyClonedCount,DetectedClientsCount\n';
 
-    // CSV書き込み用のヘルパー関数
     const writeCsv = (stats: ExecutionStat[], type: string) => {
       if (stats.length === 0) return;
       const csvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `analysis_summary_${type}_${safeDateStr}.csv`);
       const csvRows = stats.map(stat =>
-        `${stat.sourceDir},${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${stat.targetClientsCount},${stat.successfullyClonedCount},${stat.detectedClientsCount}`
+        `${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${stat.targetClientsCount},${stat.successfullyClonedCount},${stat.detectedClientsCount}`
       ).join('\n');
       fs.writeFileSync(csvPath, csvHeader + csvRows, 'utf8');
-      console.log(`\nAnalysis Summary CSV Report (${type}) generated at:\n => ${csvPath}`);
+      console.log(`\n[Done] Analysis Summary CSV (${type}) generated at:\n => ${csvPath}`);
     };
 
-    // 全てのデータ
     writeCsv(executionStats, 'all');
-
-    // failureのみ抽出
-    const failureStats = executionStats.filter(s => s.state === 'failure');
-    writeCsv(failureStats, 'failure');
-
-    // successのみ抽出
-    const successStats = executionStats.filter(s => s.state === 'success');
-    writeCsv(successStats, 'success');
+    writeCsv(executionStats.filter(s => s.state === 'failure'), 'failure');
+    writeCsv(executionStats.filter(s => s.state === 'success'), 'success');
 
   } else {
-    console.log("\nNo targets were processed.");
+    console.log("\n[Exit] No detection targets were processed.");
   }
 
+  console.log(`\n=== All Tasks Completed (100%) ===`);
 })();
