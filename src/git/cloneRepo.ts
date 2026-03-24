@@ -1,12 +1,14 @@
 import fs from "fs";
-import { exec,execSync } from 'child_process';
+import { exec } from 'child_process';
 import path from 'path';
-import output_json from "../utils/output_json";
+import OutputJson from "../utils/output_json";
 import { promisify } from 'util';
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const execAsync = promisify(exec);
-//リポジトリをクローンする関数(パス名を返す)
-export const cloneRepo = async (repo: string, clone_dir: string): Promise<string|null> => {
+
+// リポジトリをクローンする関数(パス名を返す)
+async function cloneRepo(repo: string, clone_dir: string): Promise<string|null> {
     const repoUrl = `https://github.com/${repo}.git`;
     const match = repo.match(/(.+?)\/(.+)/);
 
@@ -19,19 +21,18 @@ export const cloneRepo = async (repo: string, clone_dir: string): Promise<string
     let cloneCommand:string = '';
     const userDir = path.join(clone_dir, userName);
     const repoDir = path.join(userDir, repoName);
-    output_json.createOutputDirectory(userDir);
+    OutputJson.createDir(userDir);
 
     // リポジトリのディレクトリが存在するか確認
     if (!fs.existsSync(repoDir)) {
         try {
-            output_json.createOutputDirectory(repoDir);
+            OutputJson.createDir(repoDir);
             cloneCommand = `git clone ${repoUrl} ${repoDir}`;
             await execAsync(cloneCommand);
             await sleep(2000);
-            //console.log(`Successfully cloned: ${repo}`);
-            //.git のみのディレクトリも「中身なし」と見なす
+            
+            // .git のみのディレクトリも「中身なし」と見なす
             const contents = fs.readdirSync(repoDir).filter(item => item !== '.git');
-            console.log('contents.length:',contents.length);
             if (contents.length === 0) {
                 await sleep(1000);
                 if (fs.existsSync(repoDir)) {
@@ -49,9 +50,11 @@ export const cloneRepo = async (repo: string, clone_dir: string): Promise<string
             }
             return null;
         }
-    }else{
+    } else {
         console.log(`Repository already exists: ${repo}`);
     }
 
     return repoDir;
-};
+}
+
+export default { cloneRepo };

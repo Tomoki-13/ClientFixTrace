@@ -6,7 +6,7 @@ import { Client_Ver, VersionCommits, ReleaseInfo } from "../types/VersionCommits
 export const checkoutCommit = async (repoPath: string, libName: string): Promise<Client_Ver> => {
   if (!fs.existsSync(repoPath) || !fs.existsSync(path.join(repoPath, ".git"))) {
     console.warn(`[Skip] Invalid repository: ${repoPath}`);
-    return { client: repoPath.split('/').slice(-2).join('/'), verList: [] };
+    return { C_client: repoPath.split('/').slice(-2).join('/'), verList: [] };
   }
 
   const originalDir = process.cwd();
@@ -48,9 +48,9 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
         // クライアント自身のリリース（バージョン更新）を抽出
         if (currentClientVer && currentClientVer !== lastClientVer) {
           list2_clientReleases.push({
-            version: currentClientVer,
-            preVersion: lastClientVer || "none", // 更新前のバージョンを記録
-            commitID: hash,
+            C_version: currentClientVer,
+            C_preVersion: lastClientVer || "none", // 更新前のバージョンを記録
+            C_commitID: hash,
             timestamp
           });
           lastClientVer = currentClientVer;
@@ -66,16 +66,17 @@ export const checkoutCommit = async (repoPath: string, libName: string): Promise
       const nearestRelease = list2_clientReleases.find(rel =>
         new Date(rel.timestamp) > new Date(libUpdate.timestamp)
       );
+      // ↓ ここを型定義に合わせてプレフィックス付き（L_ や C_）に変更しました
       return {
-        libVersion: libUpdate.version,
-        commitID: libUpdate.commitID,
-        tagCommitID: nearestRelease ? nearestRelease.commitID : "no-subsequent-release",
-        releaseVersion: nearestRelease ? nearestRelease.version : "none",
-        preReleaseVersion: nearestRelease ? nearestRelease.preVersion : "none"
+        L_libVersion: libUpdate.version,
+        C_commitID: libUpdate.commitID,
+        C_tagCommitID: nearestRelease ? nearestRelease.C_commitID : "no-subsequent-release",
+        C_releaseVersion: nearestRelease ? nearestRelease.C_version : "none",
+        C_preReleaseVersion: nearestRelease ? nearestRelease.C_preVersion : "none"
       };
     });
 
-    return { client: clientName, verList: matchedHistory };
+    return { C_client: clientName, verList: matchedHistory };
 
   } finally {
     // リポジトリを作業開始前の最新状態に完全復元
