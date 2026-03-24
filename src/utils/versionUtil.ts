@@ -1,15 +1,19 @@
 /**
- * バージョン文字列のパース・比較・ソート
+ * バージョン文字列の操作に関する共通ユーティリティ
  */
 
 // 文字列から数値配列へクリーンアップ
 function clean(ver: string): number[] {
   if (!ver || typeof ver !== 'string') return [0, 0, 0];
-  return ver.trim().replace(/^[\^~><= ]+/, '').split('-')[0].split('.').map(num => parseInt(num, 10));
+  const base = ver.trim().replace(/^[\^~><= ]+/, '').split('-')[0];
+  return base.split('.').map(num => {
+    const parsed = parseInt(num, 10);
+    return isNaN(parsed) ? 0 : parsed; // 'x' や '*' は 0 に変換
+  });
 }
 
-// 2つのバージョンを比較
-function compare(a: string, b: string): number[] {
+// 単純な1対1のバージョン比較
+function compareSimple(a: string, b: string): number[] {
   const aNum = clean(a);
   const bNum = clean(b);
   const maxLength = Math.max(aNum.length, bNum.length);
@@ -20,33 +24,39 @@ function compare(a: string, b: string): number[] {
   return result;
 }
 
-// SemVerベースのソートロジック (pre-release対応)
+// 新機能：バージョンの「正規化」（例: "^8.2.0 || ^9.0" -> "8.2.0 || 9.0.0"）
+function normalize(ver: string): string {
+  if (!ver) return "0.0.0";
+  // || で分割し、それぞれを X.Y.Z 形式に直す
+  const parts = ver.split('||').map(v => {
+    const nums = clean(v);
+    return `${nums[0]}.${nums[1]}.${nums[2]}`;
+  });
+
+  // 重複を削除し、低い順に並べ替えて再び結合する
+  const uniqueParts = Array.from(new Set(parts)).sort((a, b) => {
+    return compareSimple(a, b).find(d => d !== 0) || 0;
+  });
+  return uniqueParts.join(' || ');
+}
+
+// '||' を含むバージョン同士の比較（含まれる最大のバージョン同士を比較する）
+function compare(a: string, b: string): number[] {
+  const aMax = normalize(a).split(' || ').pop() || "0.0.0";
+  const bMax = normalize(b).split(' || ').pop() || "0.0.0";
+  return compareSimple(aMax, bMax);
+}
+
+// SemVerベースのソート
 function sort(versions: string[]): string[] {
   return [...new Set(versions)].sort((a, b) => {
-    const parseVer = (v: string) => {
-      const dashIdx = v.indexOf('-');
-      const main = dashIdx > -1 ? v.slice(0, dashIdx) : v;
-      const pre = dashIdx > -1 ? v.slice(dashIdx + 1) : '';
-      return { parts: main.split('.').map(Number), pre };
-    };
-
-    const vA = parseVer(a);
-    const vB = parseVer(b);
-
-    for (let i = 0; i < Math.max(vA.parts.length, vB.parts.length); i++) {
-      const numA = vA.parts[i] || 0;
-      const numB = vB.parts[i] || 0;
-      if (numA !== numB) return numA - numB;
-    }
-
-    if (vA.pre && !vB.pre) return -1;
-    if (!vA.pre && vB.pre) return 1;
-    if (vA.pre && vB.pre) return vA.pre.localeCompare(vB.pre, undefined, { numeric: true, sensitivity: 'base' });
-    return 0;
+    const res = compare(a, b);
+    const firstDiff = res.find(d => d !== 0);
+    return firstDiff !== undefined ? firstDiff : 0;
   });
 }
 
-// 更新かダウングレードかの判定
+// アップデート判定
 function judgeUpOrDown(verPair: string[]): 'update' | 'downgrade' | 'same' {
   const res = compare(verPair[0], verPair[1]);
   for (const diff of res) {
@@ -56,7 +66,7 @@ function judgeUpOrDown(verPair: string[]): 'update' | 'downgrade' | 'same' {
   return 'same';
 }
 
-// ver が base 以上であるか
+// 指定バージョン以上か判定
 function isGreaterOrEqual(ver: string, base: string): boolean {
   const res = compare(ver, base);
   for (const diff of res) {
@@ -66,8 +76,9 @@ function isGreaterOrEqual(ver: string, base: string): boolean {
   return true;
 }
 
-export default { 
+export default {
   clean,
+  normalize,
   compare,
   sort,
   judgeUpOrDown,
