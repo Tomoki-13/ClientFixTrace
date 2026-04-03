@@ -1,36 +1,19 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
-import { Client_Ver, specificCommit } from "./types/VersionCommits";
 import { detectByPattern } from "../R-BC/src/core/detectByPattern";
-import output_json from "./utils/output_json";
-import { getAllFilesRecursively } from "./utils/getAllFiles";
 import { ExtractFunctionCallsResult } from "../R-BC/src/types/ExtractFunctionCallsResult";
-import getMatchedClients from './utils/getMatchedClients';
 
-interface Config {
-  TASK_LIST_PATH: string;
-  HISTORY_BASE_DIR: string;
-  RBC_DATA_ROOT: string;
-  SOURCE_CLIENT_REPOS: string;
-  UPDATE_CLIENT_BASE: string;
-  STATE: string;
-  RESULT_BASE_DIR: string;
-}
+// utils はすべてオブジェクトとしてインポート
+import OutputJson from "./utils/output_json";
+import GetAllFiles from "./utils/getAllFiles";
+import GetMatchedClients from './utils/getMatchedClients';
+import GetTargetCommits from "./utils/targetCommits";
 
-//メソッド単位
-// const CONFIG: Config = {
-//   TASK_LIST_PATH: '../datasets/mydata/mydata.json',
-//   HISTORY_BASE_DIR: '../datasets/analysis_target/current/2026-02-24-08-48-48',
-//   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-02-26-15-31-06',
-//   SOURCE_CLIENT_REPOS: '../clientRepos',
-//   UPDATE_CLIENT_BASE: '../client_update',
-//   STATE: 'failure',
-//   RESULT_BASE_DIR: '../output/specificData'
-// };
-
-// 型情報あり
-const CONFIG: Config = {
+// ==========================================
+// INPUT: 実行設定
+// ==========================================
+const CONFIG = {
   TASK_LIST_PATH: '../datasets/mydata/mydata.json',
   HISTORY_BASE_DIR: '../datasets/analysis_target/current/2026-02-24-08-48-48',
   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/fulldataSample',
@@ -39,39 +22,20 @@ const CONFIG: Config = {
   STATE: 'success',
   RESULT_BASE_DIR: '../output/specificData'
 };
-
-export function get_target_commits(data: Client_Ver[], libName: string, targetVersion: string): specificCommit[] {
-  let result: specificCommit[] = [];
-  for (const clientData of data) {
-    const raw = clientData as any;
-    const index = raw.verList.findIndex((v: any) =>
-      getMatchedClients.isVersionGreaterOrEqual(v.L_libVersion || v.libVersion, targetVersion)
-    );
-    if (index !== -1) {
-      const post = raw.verList[index];
-      const pre = index > 0 ? raw.verList[index - 1] : null;
-      result.push({
-        C_client: raw.C_client || raw.client,
-        L_libName: libName,
-        L_targetVersion: targetVersion,
-        L_preLibVersion: pre ? (pre.L_libVersion || pre.libVersion) : "unknown/initial",
-        L_postLibVersion: post.L_libVersion || post.libVersion,
-        C_commitID: post.C_commitID || post.commitID,
-        C_tagCommitID: post.C_tagCommitID || post.tagCommitID
-      });
-    }
-  }
-  return result;
-}
+// ==========================================
 
 (async () => {
   const taskList: { libName: string; postVersion: string }[] = JSON.parse(fs.readFileSync(CONFIG.TASK_LIST_PATH, 'utf-8'));
-  const historyFiles = await getAllFilesRecursively(CONFIG.HISTORY_BASE_DIR);
-  const rbcFiles = await getAllFilesRecursively(CONFIG.RBC_DATA_ROOT);
-  const dateStr = output_json.formatDateTime(new Date());
+
+  // GetAllFiles.getRecursively を使用
+  const historyFiles = await GetAllFiles.getRecursively(CONFIG.HISTORY_BASE_DIR);
+  const rbcFiles = await GetAllFiles.getRecursively(CONFIG.RBC_DATA_ROOT);
+
+  // OutputJson.formatDateTime を使用
+  const dateStr = OutputJson.formatDateTime(new Date());
 
   const summaryOutDir = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'specific-commits');
-  output_json.createOutputDirectory(summaryOutDir);
+  OutputJson.createDir(summaryOutDir);
 
   for (const task of taskList) {
     const { libName, postVersion } = task;
@@ -82,9 +46,9 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
       path.basename(f).startsWith(`version_history-${CONFIG.STATE}`)
     );
 
-    const rbcTargetDir = rbcFiles.find(f => f.includes(`${libName}_${verKey}`))
-      ? rbcFiles.find(f => f.includes(`${libName}_${verKey}`))?.split(libName + '_' + verKey)[0] + libName + '_' + verKey
-      : null;
+    const rbcTargetDirBase = rbcFiles.find(f => f.includes(`${libName}_${verKey}`));
+    const rbcTargetDir = rbcTargetDirBase ? rbcTargetDirBase.split(libName + '_' + verKey)[0] + libName + '_' + verKey : null;
+
     if (!targetHistoryPath || !rbcTargetDir) continue;
     const matchFilePath = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('matchResults.json') && f.includes(CONFIG.STATE));
 
@@ -95,12 +59,15 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
     const patternFile = detectPatternFile || fallbackPatternFile;
 
     if (!matchFilePath || !patternFile) continue;
+
     // detectpatternlist.json が見つかった場合は 0、それ以外（patternList.jsonのみ）の場合は 1 とする
     const patternModeFlag = detectPatternFile ? 0 : 1;
 
     console.log(`\n--- [Analysis] ${libName}-${postVersion} ---`);
-    const filteredHistory = getMatchedClients.getMatchedClients(matchFilePath, targetHistoryPath);
-    const targets = get_target_commits(filteredHistory, libName, postVersion);
+
+    // GetMatchedClients.get と GetTargetCommits.get を使用
+    const filteredHistory = GetMatchedClients.get(matchFilePath, targetHistoryPath);
+    const targets = GetTargetCommits.get(filteredHistory, libName, postVersion);
 
     if (targets.length === 0) continue;
 
@@ -125,18 +92,18 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
     const baseResultPath = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
 
     if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
-    output_json.createOutputDirectory(baseClonePath);
-    
+    OutputJson.createDir(baseClonePath);
+
     const runAnalysis = async (type: 'update' | 'release') => {
       // 内部階層: base/update または base/release
       const absCloneDir = path.resolve(baseClonePath, type);
       const absOutDir = path.resolve(baseResultPath, type);
-      
+
       // detectByPattern に渡すための相対パスを計算
       const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
 
-      output_json.createOutputDirectory(absCloneDir);
-      output_json.createOutputDirectory(absOutDir);
+      OutputJson.createDir(absCloneDir);
+      OutputJson.createDir(absOutDir);
 
       let successCount = 0;
       for (const item of targets) {
@@ -157,7 +124,18 @@ export function get_target_commits(data: Client_Ver[], libName: string, targetVe
 
       if (successCount > 0) {
         console.log(`  [Detect] ${type}地点の解析実行: ${successCount}件 (mode: ${patternModeFlag})`);
-        await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
+        const detectResult = await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
+
+        // 出力された JSON ファイル名の末尾に件数を付与する
+        const detectedCount = detectResult.totalClients;
+        const outputFiles = fs.readdirSync(absOutDir).filter(f => f.endsWith('.json'));
+        for (const file of outputFiles) {
+          const oldPath = path.join(absOutDir, file);
+          const ext = path.extname(file);
+          const base = path.basename(file, ext);
+          const newPath = path.join(absOutDir, `${base}_${detectedCount}${ext}`);
+          fs.renameSync(oldPath, newPath);
+        }
       }
     };
 

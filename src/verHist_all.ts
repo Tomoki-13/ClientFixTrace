@@ -25,7 +25,7 @@ const CONFIG = {
   mode: 'full' as RunMode,
 
   // 全体的な出力のベースディレクトリ
-  outputBaseDir: '../output/sampleTest',
+  outputBaseDir: '../output/',
   // テスト結果データセットのパス
   testResultPath: '../datasets/test_result.json',
 
@@ -90,15 +90,16 @@ async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, 
 
       // ペアの集計
       const pairs = createVersionPairs.create_version_pairs(inputList, libName, 1);
-      const updateCount = pairs.filter(p => p.type === 'update').reduce((sum, p) => sum + p.count, 0);
-      const countSuffix = `${updateCount}updated-${population}total`;
-
+      
       outputJson.createDir(outputDir);
-      const pairPath = outputJson.getUniquePath(outputDir, `result_pairs-${state}`, countSuffix);
+
+      // result_pairs の保存 (全体のペア一覧)
+      const pairPath = outputJson.getUniquePath(outputDir, `result_pairs-${state}`, `${population}total`);
       fs.writeFileSync(pairPath, JSON.stringify(pairs, null, 2));
 
-      classifyTypes(pairs, libName, postVersion, dateStr, state, countSuffix);
-      console.log(`  [Analyze] Classification completed for ${state} (Suffix: ${countSuffix})`);
+      // 種別ごとの分類と保存
+      classifyTypes(pairs, libName, postVersion, dateStr, state, population);
+      console.log(`  [Analyze] Classification completed for ${state}.`);
     } else {
       console.log(`  [Analyze] No history data to analyze for ${state}.`);
     }
@@ -108,7 +109,7 @@ async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, 
 /**
  * 種別ごとにデータを分類して保存
  */
-function classifyTypes(data: VersionPair[], libName: string, postLibVersion: string, dateStr: string, state: string, countSuffix: string): void {
+function classifyTypes(data: VersionPair[], libName: string, postLibVersion: string, dateStr: string, state: string, population: number): void {
   data = [...data].sort((a, b) => b.count - a.count);
   let outDir = path.join(`${CONFIG.outputBaseDir}/sortData`, dateStr, state, `${libName}-${postLibVersion}`);
   outputJson.createDir(outDir);
@@ -116,7 +117,15 @@ function classifyTypes(data: VersionPair[], libName: string, postLibVersion: str
   const types: ('update' | 'downgrade' | 'same')[] = ['update', 'downgrade', 'same'];
   types.forEach(type => {
     const filteredData = data.filter((item) => item.type === type);
-    const outputPath = outputJson.getUniquePath(outDir, '', `${type}_${countSuffix}`);
+    
+    // 対象タイプ（update, same, downgrade）に該当するクライアント数の合計を算出
+    const typeCount = filteredData.reduce((sum, p) => sum + p.count, 0);
+    
+    // 求められているファイル名形式: _<数><タイプ>-<母数>total (例: _5same-14total)
+    const countSuffix = `_${typeCount}${type}-${population}total`;
+    
+    // 第2引数(prefix)を空にして第3引数(suffix)に全体の名前を渡す
+    const outputPath = outputJson.getUniquePath(outDir, '', countSuffix);
     fs.writeFileSync(outputPath, JSON.stringify(filteredData, null, 2));
   });
 }
@@ -175,7 +184,7 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
     const masterClientSet = new Set<string>();
     const pairClientMap = new Map<string, { succ: string[], fail: string[] }>();
 
-    // [修正箇所] 文字列の厳密な一致ではなく、npm_pkg 名の一致または部分一致で判定する
+    // 文字列の厳密な一致ではなく、npm_pkg 名の一致または部分一致で判定する
     const matchLib = (item: Item, targetLib: string) => 
       (item.L__npm_pkg && item.L__npm_pkg === targetLib) || item.L__nameWithOwner.includes(targetLib);
 
@@ -190,7 +199,7 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
       const clientsSucc = [...new Set(list2Succ.filter(value => list1.includes(value)))];
       const clientsFail = [...new Set(list2Fail.filter(value => list1.includes(value)))];
 
-      // [仕様維持] 成功と失敗の両方が最低1人以上いるペアに限定
+      // 成功と失敗の両方が最低1人以上いるペアに限定
       if (clientsSucc.length > 0 && clientsFail.length > 0) {
         clientsSucc.forEach(c => masterClientSet.add(c));
         clientsFail.forEach(c => masterClientSet.add(c));

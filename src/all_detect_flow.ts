@@ -18,19 +18,21 @@ import GetMatchedClients from './utils/getMatchedClients';
 // ==========================================
 const CONFIG = {
   // 1. verData(抽出処理) が出力した CSV のパス (解析対象の特定に使用)
-  CLONE_SUMMARY_CSV: '../output/cloneResult/2026-03-16-17-00-35/clone_summary.csv',
+  // CLONE_SUMMARY_CSV: '../output/cloneResult/2026-03-16-17-00-35/clone_summary.csv',
+  CLONE_SUMMARY_CSV: '',
 
   // 2. verData が出力した履歴データが格納されているディレクトリ
-  VERSION_DATA_DIR: '../output/versionData/2026-03-16-17-00-35-all',
+  VERSION_DATA_DIR: '../output/verdata/',
+  // VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-02-24-08-48-48',
 
   // 3. パターンデータ (R-BCの結果) が格納されているディレクトリ
-  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-03-16-12-19-37-all',
+  RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/',
 
   // 4.verData(抽出処理) がクローンしたクライアントリポジトリの格納先
-  SOURCE_CLIENT_REPOS: '../clonedata/repos/clientRepos_all',
+  SOURCE_CLIENT_REPOS: '../clonedata/repos/',
 
   // 5. 解析実行時に一時的にリポジトリをコピー＆チェックアウトする作業ディレクトリ
-  BASE_CLONE_DIR: '../clonedata/repos/analysis_temp_repos',
+  BASE_CLONE_DIR: '../clonedata/repos/',
 
   // 6. detectByPattern の解析結果および集計CSVを出力するディレクトリ
   RESULT_BASE_DIR: '../output/specificData',
