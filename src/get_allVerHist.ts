@@ -4,237 +4,276 @@ import { Item } from "./types/Item";
 import { VersionPair } from "./types/VersionPair";
 
 // utils・core はすべてオブジェクトとしてインポート
-import LoadJson from "./utils/loadJson";
-import ExtractVersion from "./core/extractVersion";
-import CreateVersionPairs from "./core/create_version_pairs";
-import ArrayOperation from "./utils/arrayOperation";
-import OutputJson from "./utils/output_json";
+import loadJson from "./utils/loadJson";
+import extractVersion from "./core/extractVersion";
+import createVersionPairs from "./core/create_version_pairs";
+import outputJson from "./utils/output_json";
+import dataProcessor from "./utils/dataProcessor";
+import targetCommits from "./utils/targetCommits"; // ターゲット抽出用
+import versionUtil from "./utils/versionUtil";     // バージョン正規化用
+
+type RunMode = 'extract' | 'analyze' | 'full';
 
 // ==========================================
 // INPUT: 実行設定
 // ==========================================
 const CONFIG = {
-  MODE: 'full' as 'extract' | 'analyze' | 'full',
-  TEST_RESULT_PATH: '../datasets/test_result.json',
-  OUTPUT_CLONE_RESULT_DIR: '../output/cloneResult',
-  OUTPUT_VERSION_DATA_DIR: '../output/versionData',
-  OUTPUT_SORT_DATA_DIR: '../output/sortData',
-  ANALYZE_TARGET_HISTORY_PATH: '../output/versionData/2026-03-01-12-00-00/success/libname/version_history-success-100total.json'
+  // 実行モードの指定
+  mode: 'full' as RunMode,
+
+  // 全体的な出力のベースディレクトリ
+  outputBaseDir: '../output/',
+  // テスト結果データセットのパス
+  testResultPath: '../datasets/test_result.json',
+
+  // 抽出対象とするライブラリの指定 (例: 'uuid')
+  // 空文字 '' に設定すると、データセット内の全ライブラリを対象に実行する
+  targetLibrary: '',
+
+  // ----------------------------------------
+  // [analyze モード専用設定]
+  // ----------------------------------------
+  analyzeTargetHistoryPath: '../output/versionData/2026-03-01-12-00-00/success/libname/version_history-success-14total.json',
+  analyzeState: 'failure',
+  analyzeLibName: 'Brightspace', 
+  analyzePostVersion: '3.1.0'
 };
 // ==========================================
 
-interface TargetUpdate {
-  libName: string;
-  preVersion: string;
-  postVersion: string;
-}
 
-function extractUpdatesFromResults(testResults: Item[]): TargetUpdate[] {
-  const updatesMap = new Map<string, TargetUpdate>();
-  const libClientMap = new Map<string, Map<string, Item[]>>();
-
-  for (const record of testResults) {
-    const lib = record.L__nameWithOwner;
-    const client = record.S__nameWithOwner;
-
-    if (!libClientMap.has(lib)) libClientMap.set(lib, new Map());
-    const clientMap = libClientMap.get(lib)!;
-
-    if (!clientMap.has(client)) clientMap.set(client, []);
-    clientMap.get(client)!.push(record);
-  }
-
-  for (const [lib, clientMap] of libClientMap.entries()) {
-    for (const [client, records] of clientMap.entries()) {
-      const versions = [...new Set(records.map(r => r.L__version))].sort((a, b) => {
-        const parseVer = (v: string) => {
-          const dashIdx = v.indexOf('-');
-          const main = dashIdx > -1 ? v.slice(0, dashIdx) : v;
-          const pre = dashIdx > -1 ? v.slice(dashIdx + 1) : '';
-          return { parts: main.split('.').map(Number), pre };
-        };
-
-        const vA = parseVer(a);
-        const vB = parseVer(b);
-
-        for (let i = 0; i < Math.max(vA.parts.length, vB.parts.length); i++) {
-          const numA = vA.parts[i] || 0;
-          const numB = vB.parts[i] || 0;
-          if (numA !== numB) return numA - numB;
-        }
-
-        if (vA.pre && !vB.pre) return -1;
-        if (!vA.pre && vB.pre) return 1;
-        if (vA.pre && vB.pre) return vA.pre.localeCompare(vB.pre, undefined, { numeric: true, sensitivity: 'base' });
-        return 0;
-      });
-
-      if (versions.length >= 2) {
-        for (let i = 0; i < versions.length - 1; i++) {
-          const oldV = versions[i];
-          const newV = versions[i + 1];
-
-          const hasOldSuccess = records.some(r => r.L__version === oldV && r.state === 'success');
-
-          if (hasOldSuccess) {
-            const key = `${lib}_${oldV}_${newV}`;
-            if (!updatesMap.has(key)) {
-              const libName = (records.find(r => r.L__version === newV) as any)?.L__npm_pkg || lib;
-              updatesMap.set(key, { libName, preVersion: oldV, postVersion: newV });
-            }
-          }
-        }
-      }
-    }
-  }
-  return Array.from(updatesMap.values());
-}
-
-async function saveAndAnalyzeData(libTask: TargetUpdate, state: string, dateStr: string, mode: string, verHistory: any[] = [], targetPath: string = "") {
+/**
+ * データの保存と解析（分類）を行う補助関数
+ */
+async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, mode: RunMode, verHistory: any[] = [], targetPath: string = "") {
   const { libName, preVersion, postVersion } = libTask;
-  const outputDir = path.resolve(process.cwd(), `${CONFIG.OUTPUT_VERSION_DATA_DIR}/${dateStr}/${state}/${libName}-${postVersion}`);
+  const outputDir = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/versionData/${dateStr}/${state}/${libName}-${postVersion}`);
   let population = 0;
 
+  // --- EXTRACT フェーズ (履歴JSONの保存) ---
   if ((mode === 'extract' || mode === 'full') && verHistory.length > 0) {
     population = verHistory.length;
-    OutputJson.createDir(outputDir);
-    const historyPath = OutputJson.getUniquePath(outputDir, `version_history-${state}`, `${population}total`);
+    outputJson.createDir(outputDir);
+    const historyPath = outputJson.getUniquePath(outputDir, `version_history-${state}`, `${population}total`);
     fs.writeFileSync(historyPath, JSON.stringify(verHistory, null, 2));
-    console.log(`[Extract] Saved ${population} histories for ${state}.`);
+    console.log(`  [Extract] Saved ${population} histories for ${state}.`);
   }
 
+  // --- ANALYZE フェーズ (ペア作成と分類保存) ---
   if (mode === 'analyze' || mode === 'full') {
     if (mode === 'analyze' && targetPath.length > 0) {
-      console.log(`[Analyze] Loading existing file: ${targetPath}`);
-      verHistory = await LoadJson.clientVer(targetPath);
+      console.log(`  [Analyze] Loading existing file: ${targetPath}`);
+      if (fs.existsSync(targetPath)) {
+        verHistory = await loadJson.clientVer(targetPath);
+      } else {
+        console.error(`  [Error] analyzeTargetHistoryPath does not exist.`);
+        return;
+      }
     }
 
     population = verHistory.length;
 
     if (population > 0) {
-      const inputList = ArrayOperation.extractVersionList(verHistory);
-      const pairs = CreateVersionPairs.create_version_pairs(inputList, libName, 1);
+      const targets = targetCommits.get(verHistory, libName, postVersion);
+      const inputList: string[][] = [];
 
-      const updateCount = pairs.filter(p => p.type === 'update').reduce((sum, p) => sum + p.count, 0);
-      const countSuffix = `${updateCount}updated-${population}total`;
+      for (const t of targets) {
+        const normPre = versionUtil.normalize(t.L_preLibVersion);
+        const normPost = versionUtil.normalize(t.L_postLibVersion);
+        inputList.push([normPre, normPost]);
+      }
 
-      OutputJson.createDir(outputDir);
-      const pairPath = OutputJson.getUniquePath(outputDir, `result_pairs-${state}`, countSuffix);
+      // ペアの集計
+      const pairs = createVersionPairs.create_version_pairs(inputList, libName, 1);
+      
+      outputJson.createDir(outputDir);
+
+      // result_pairs の保存
+      const pairPath = outputJson.getUniquePath(outputDir, `result_pairs-${state}`, `${population}total`);
       fs.writeFileSync(pairPath, JSON.stringify(pairs, null, 2));
 
-      Classify_types(pairs, libName, postVersion, dateStr, state, `${population}total`);
-      console.log(`[Analyze] Classification completed for ${state}: ${countSuffix}`);
+      // 種別ごとの分類と保存
+      classifyTypes(pairs, libName, postVersion, dateStr, state, population);
+      console.log(`  [Analyze] Classification completed for ${state}.`);
     } else {
-      console.log(`[Analyze] No history data to analyze for ${state}.`);
+      console.log(`  [Analyze] No history data to analyze for ${state}.`);
     }
   }
 }
 
-function Classify_types(data: VersionPair[], libName: string, postLibVersion: string, dateStr: string, state: string, total: string): void {
+/**
+ * 種別ごとにデータを分類して保存
+ */
+function classifyTypes(data: VersionPair[], libName: string, postLibVersion: string, dateStr: string, state: string, population: number): void {
   data = [...data].sort((a, b) => b.count - a.count);
-  let outDir = path.join(`${CONFIG.OUTPUT_SORT_DATA_DIR}`, dateStr, state, `${libName}-${postLibVersion}`);
-  OutputJson.createDir(outDir);
+  let outDir = path.join(`${CONFIG.outputBaseDir}/sortData`, dateStr, state, `${libName}-${postLibVersion}`);
+  outputJson.createDir(outDir);
 
   const types: ('update' | 'downgrade' | 'same')[] = ['update', 'downgrade', 'same'];
   types.forEach(type => {
     const filteredData = data.filter((item) => item.type === type);
-    const outputPath = OutputJson.getUniquePath(outDir, '', `${filteredData.length}${type}_${total}`);
+    const typeCount = filteredData.reduce((sum, p) => sum + p.count, 0);
+    const countSuffix = `_${typeCount}${type}-${population}total`;
+    
+    const outputPath = outputJson.getUniquePath(outDir, '', countSuffix);
     fs.writeFileSync(outputPath, JSON.stringify(filteredData, null, 2));
   });
 }
 
-function appendCloneLog(logPaths: string[], libName: string, preVer: string, postVer: string, succCount: number, failCount: number, status: string, durationSec: number) {
-  const logLine = `${libName},${preVer},${postVer},${succCount},${failCount},${status},${durationSec.toFixed(2)}\n`;
+/**
+ * 実行結果をCSVに追記 (Durationの引数を削除)
+ */
+function appendCloneLog(logPaths: string[], libName: string, preVer: string, postVer: string, succCount: number, failCount: number, status: string) {
+  const logLine = `${libName},${preVer},${postVer},${succCount},${failCount},${status}\n`;
   for (const logPath of logPaths) {
     fs.appendFileSync(logPath, logLine, 'utf8');
   }
 }
 
+// ==================================================
+// メイン実行部
+// ==================================================
 (async () => {
-  const now = new Date();
-  const dateStr = OutputJson.formatDateTime(now);
+  const dateStr = outputJson.formatDateTime(new Date());
 
-  const mode = CONFIG.MODE;
+  console.log(`\n==================================================`);
+  console.log(`[Run Mode] ${CONFIG.mode.toUpperCase()}`);
+  console.log(`==================================================`);
 
-  const cloneResultDir = path.resolve(process.cwd(), `${CONFIG.OUTPUT_CLONE_RESULT_DIR}/${dateStr}`);
-  OutputJson.createDir(cloneResultDir);
+  if (CONFIG.mode === 'full' || CONFIG.mode === 'extract') {
+    const cloneResultDir = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/cloneResult/${dateStr}`);
+    const versionDataRoot = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/versionData/${dateStr}`);
+    const allVerHistDir = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/allverHist/${dateStr}`); // 追加: 全履歴保存用
+    
+    outputJson.createDir(cloneResultDir);
+    outputJson.createDir(versionDataRoot);
+    outputJson.createDir(allVerHistDir); // ディレクトリ作成
 
-  const versionDataRoot = path.resolve(process.cwd(), `${CONFIG.OUTPUT_VERSION_DATA_DIR}/${dateStr}`);
-  OutputJson.createDir(versionDataRoot);
+    const validCloneLogPath = path.join(cloneResultDir, 'valid_clone_summary.csv');
+    const invalidCloneLogPath = path.join(cloneResultDir, 'invalid_clone_summary.csv');
+    const validVerDataLogPath = path.join(versionDataRoot, 'valid_clone_summary.csv');
+    const invalidVerDataLogPath = path.join(versionDataRoot, 'invalid_clone_summary.csv');
 
-  const validCloneLogPath = path.join(cloneResultDir, 'valid_clone_summary.csv');
-  const invalidCloneLogPath = path.join(cloneResultDir, 'invalid_clone_summary.csv');
+    // ヘッダーから Duration(s) を削除
+    const csvHeader = 'Library,PreVersion,PostVersion,SuccessCloned,FailureCloned,Status\n';
 
-  const validVersionDataLogPath = path.join(versionDataRoot, 'valid_clone_summary.csv');
-  const invalidVersionDataLogPath = path.join(versionDataRoot, 'invalid_clone_summary.csv');
+    fs.writeFileSync(validCloneLogPath, csvHeader, 'utf8');
+    fs.writeFileSync(invalidCloneLogPath, csvHeader, 'utf8');
+    fs.writeFileSync(validVerDataLogPath, csvHeader, 'utf8');
+    fs.writeFileSync(invalidVerDataLogPath, csvHeader, 'utf8');
 
-  const csvHeader = 'Library,PreVersion,PostVersion,SuccessCloned,FailureCloned,Status,Duration(s)\n';
+    console.log(`[Init] Loading dataset: ${CONFIG.testResultPath}`);
+    const data: Item[] = await loadJson.item(CONFIG.testResultPath);
 
-  fs.writeFileSync(validCloneLogPath, csvHeader, 'utf8');
-  fs.writeFileSync(invalidCloneLogPath, csvHeader, 'utf8');
-  fs.writeFileSync(validVersionDataLogPath, csvHeader, 'utf8');
-  fs.writeFileSync(invalidVersionDataLogPath, csvHeader, 'utf8');
+    let libVersionRanges = dataProcessor.extractUpdateTasks(data);
+    console.log(`[Init] Extracted ${libVersionRanges.length} total valid version pairs from dataset.`);
 
-  if (mode === 'full' || mode === 'extract') {
-    console.log(`[Extract] Loading dataset test_result.json...`);
-    const data: Item[] = await LoadJson.item(CONFIG.TEST_RESULT_PATH);
+    if (CONFIG.targetLibrary) {
+      libVersionRanges = libVersionRanges.filter(task => task.libName.includes(CONFIG.targetLibrary));
+      console.log(`[Init] Filtered by targetLibrary '${CONFIG.targetLibrary}'. Processing ${libVersionRanges.length} pairs.`);
+    }
 
-    const libVersionRanges: TargetUpdate[] = extractUpdatesFromResults(data);
-    console.log(`[Init] Extracted ${libVersionRanges.length} target version pairs from dataset.`);
+    if (libVersionRanges.length === 0) return;
 
+    const matchLib = (item: Item, targetLib: string) => 
+      (item.L__npm_pkg && item.L__npm_pkg === targetLib) || item.L__nameWithOwner.includes(targetLib);
+
+    // ==================================================
+    // 【重要】ライブラリごとにタスクをグループ化
+    // これによりクライアントの上書きを完全に防ぎます
+    // ==================================================
+    const tasksByLib = new Map<string, any[]>();
     for (const task of libVersionRanges) {
-      const taskStartTime = Date.now();
-      const { libName, preVersion, postVersion } = task;
+      if (!tasksByLib.has(task.libName)) tasksByLib.set(task.libName, []);
+      tasksByLib.get(task.libName)!.push(task);
+    }
 
-      const list1 = data.filter(item => item.L__nameWithOwner.includes(libName) && item.L__version.includes(preVersion) && item.state.includes("success")).map(item => item.S__nameWithOwner);
-      const list2Succ = data.filter(item => item.L__nameWithOwner.includes(libName) && item.L__version.includes(postVersion) && item.state.includes("success")).map(item => item.S__nameWithOwner);
-      const list2Fail = data.filter(item => item.L__nameWithOwner.includes(libName) && item.L__version.includes(postVersion) && item.state.includes("failure")).map(item => item.S__nameWithOwner);
+    // ライブラリごとに抽出・解析処理を実行
+    for (const [libName, tasks] of tasksByLib.entries()) {
+      const masterClientSet = new Set<string>();
+      const pairClientMap = new Map<string, { succ: string[], fail: string[] }>();
 
-      let clientsSucc = [...new Set(list2Succ.filter(value => list1.includes(value)))];
-      let clientsFail = [...new Set(list2Fail.filter(value => list1.includes(value)))];
+      // このライブラリに属する全タスクのクライアントを収集
+      for (const task of tasks) {
+        const { preVersion, postVersion } = task;
 
-      if (clientsSucc.length === 0 || clientsFail.length === 0) {
-        const taskDuration = (Date.now() - taskStartTime) / 1000;
-        console.log(`\n[Skip] Task: ${libName} (${preVersion} -> ${postVersion}) - Not enough clients. [Done in ${taskDuration.toFixed(2)}s]`);
+        const list1 = data.filter(item => matchLib(item, libName) && item.L__version === preVersion && item.state === "success").map(item => item.S__nameWithOwner);
+        const list2Succ = data.filter(item => matchLib(item, libName) && item.L__version === postVersion && item.state === "success").map(item => item.S__nameWithOwner);
+        const list2Fail = data.filter(item => matchLib(item, libName) && item.L__version === postVersion && item.state === "failure").map(item => item.S__nameWithOwner);
 
-        appendCloneLog([invalidCloneLogPath, invalidVersionDataLogPath], libName, preVersion, postVersion, clientsSucc.length, clientsFail.length, 'EXCLUDED_NOT_ENOUGH_DATA', taskDuration);
+        const clientsSucc = [...new Set(list2Succ.filter(value => list1.includes(value)))];
+        const clientsFail = [...new Set(list2Fail.filter(value => list1.includes(value)))];
+
+        if (clientsSucc.length > 0 && clientsFail.length > 0) {
+          clientsSucc.forEach(c => masterClientSet.add(c));
+          clientsFail.forEach(c => masterClientSet.add(c));
+          pairClientMap.set(`${preVersion}_${postVersion}`, { succ: clientsSucc, fail: clientsFail });
+        }
+      }
+
+      const allClients = Array.from(masterClientSet);
+      if (allClients.length === 0) {
+        for (const task of tasks) {
+          appendCloneLog([invalidCloneLogPath, invalidVerDataLogPath], task.libName, task.preVersion, task.postVersion, 0, 0, 'EXCLUDED_NOT_ENOUGH_DATA');
+        }
         continue;
       }
 
-      console.log(`\nStarting Full Task: ${libName} (${preVersion} -> ${postVersion})`);
+      console.log(`\n[Master Extract] Starting extraction for ${libName} (${allClients.length} unique clients)...`);
+      
+      // "all_libraries" ではなく、実際のライブラリ名を渡して抽出
+      const masterHistory = await extractVersion.extractVersion_master(allClients, libName);
 
-      console.log(`--- Extracting success clients ---`);
-      const historySucc = await ExtractVersion.extractVersion_all(clientsSucc, libName, postVersion, 'success');
+      // ==================================================
+      // 【追加】抽出した全履歴を allverHist に保存
+      // ==================================================
+      if (masterHistory.length > 0) {
+        // スラッシュ等が含まれている場合を考慮し、ファイル名として安全な形式にする
+        const safeLibName = libName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const allHistPath = path.join(allVerHistDir, `${safeLibName}_all_history.json`);
+        fs.writeFileSync(allHistPath, JSON.stringify(masterHistory, null, 2));
+        console.log(`[Master Extract] Saved full history for ${libName} to ${allHistPath}`);
+      }
 
-      console.log(`--- Extracting failure clients ---`);
-      const historyFail = await ExtractVersion.extractVersion_all(clientsFail, libName, postVersion, 'failure');
+      // 取得した履歴をタスク（バージョンペア）ごとに分配して解析・保存
+      for (const task of tasks) {
+        const pairKey = `${task.preVersion}_${task.postVersion}`;
+        const pairClients = pairClientMap.get(pairKey);
 
-      const taskDuration = (Date.now() - taskStartTime) / 1000;
-
-      if (historySucc.length > 0 && historyFail.length > 0) {
-        console.log(`[Success] Valid clones found. Proceeding to save and analyze...`);
-        await saveAndAnalyzeData(task, 'success', dateStr, mode, historySucc);
-        await saveAndAnalyzeData(task, 'failure', dateStr, mode, historyFail);
-
-        console.log(`[Completed] Task: ${libName} (${preVersion} -> ${postVersion}) [Done in ${taskDuration.toFixed(2)}s]`);
-
-        appendCloneLog([validCloneLogPath, validVersionDataLogPath], libName, preVersion, postVersion, historySucc.length, historyFail.length, 'SUCCESS', taskDuration);
-      } else {
-        console.log(`[Exclude] One of the states returned 0 valid histories. Deleting cloned data...`);
-        const cleanVersion = postVersion.replace(/[^a-zA-Z0-9]/g, '');
-        const repoDir = path.resolve(process.cwd(), `../clientRepos_all/${libName}/${cleanVersion}`);
-
-        if (fs.existsSync(repoDir)) {
-          fs.rmSync(repoDir, { recursive: true, force: true });
+        if (!pairClients) {
+          appendCloneLog([invalidCloneLogPath, invalidVerDataLogPath], task.libName, task.preVersion, task.postVersion, 0, 0, 'EXCLUDED_NOT_ENOUGH_DATA');
+          continue;
         }
 
-        console.log(`[Excluded] Task: ${libName} (${preVersion} -> ${postVersion}) [Done in ${taskDuration.toFixed(2)}s]`);
+        console.log(`--- Task: ${task.libName} (${task.preVersion} -> ${task.postVersion}) ---`);
 
-        appendCloneLog([invalidCloneLogPath, invalidVersionDataLogPath], libName, preVersion, postVersion, historySucc.length, historyFail.length, 'EXCLUDED_DUE_TO_ZERO_CLONE', taskDuration);
+        const historySucc = masterHistory.filter(c => pairClients.succ.includes(c.C_client));
+        const historyFail = masterHistory.filter(c => pairClients.fail.includes(c.C_client));
+
+        if (historySucc.length > 0 && historyFail.length > 0) {
+          await saveAndAnalyzeData(task, 'success', dateStr, CONFIG.mode, historySucc);
+          await saveAndAnalyzeData(task, 'failure', dateStr, CONFIG.mode, historyFail);
+          
+          appendCloneLog([validCloneLogPath, validVerDataLogPath], task.libName, task.preVersion, task.postVersion, historySucc.length, historyFail.length, 'SUCCESS');
+        } else {
+          console.log(`  [Exclude] One of the states returned 0 valid histories from master.`);
+          appendCloneLog([invalidCloneLogPath, invalidVerDataLogPath], task.libName, task.preVersion, task.postVersion, historySucc.length, historyFail.length, 'EXCLUDED_ZERO_MATCH');
+        }
       }
     }
-  } else if (mode === 'analyze') {
-    const fakeTask = { libName: "dummy", preVersion: "1.0.0", postVersion: "2.0.0" };
-    await saveAndAnalyzeData(fakeTask, 'success', dateStr, mode, [], CONFIG.ANALYZE_TARGET_HISTORY_PATH);
+  }
+
+  // ---------------------------------------------------------
+  // [パターン B] analyze モードのみ
+  // ---------------------------------------------------------
+  else if (CONFIG.mode === 'analyze') {
+    const targetPath = CONFIG.analyzeTargetHistoryPath;
+    const task = { 
+      libName: CONFIG.analyzeLibName, 
+      preVersion: "unknown", 
+      postVersion: CONFIG.analyzePostVersion 
+    };
+    
+    console.log(`[Analyze Mode] Target Task: ${task.libName} (-> ${task.postVersion})`);
+    await saveAndAnalyzeData(task, CONFIG.analyzeState, dateStr, CONFIG.mode, [], targetPath);
   }
 })();
