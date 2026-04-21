@@ -9,7 +9,9 @@ module.exports = {
     "/node_modules/",
     "/clientRepos/"
   ],
-  modulePathIgnorePatterns: [
-    "<rootDir>/clientRepos/"
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "<rootDir>/output/",
+    "<rootDir>/clientRepos"
   ],
 };
