@@ -26,18 +26,17 @@ function compareSimple(a: string, b: string): number[] {
 
 // 新機能：バージョンの「正規化」（例: "^8.2.0 || ^9.0" -> "8.2.0 || 9.0.0"）
 function normalize(ver: string): string {
-  if (!ver) return "0.0.0";
-  // || で分割し、それぞれを X.Y.Z 形式に直す
-  const parts = ver.split('||').map(v => {
-    const nums = clean(v);
-    return `${nums[0]}.${nums[1]}.${nums[2]}`;
-  });
-
-  // 重複を削除し、低い順に並べ替えて再び結合する
-  const uniqueParts = Array.from(new Set(parts)).sort((a, b) => {
-    return compareSimple(a, b).find(d => d !== 0) || 0;
-  });
-  return uniqueParts.join(' || ');
+  if (!ver || ver === "not_found" || ver === "none") return "0.0.0";
+  
+  const cleanVer = ver.trim().replace(/^[\\^~><= ]+/, '').split('-')[0];
+  const parts = cleanVer.split('.');
+  
+  // 必ず3桁揃える
+  const major = parts[0] || "0";
+  const minor = parts[1] || "0";
+  const patch = parts[2] || "0";
+  
+  return `${major}.${minor}.${patch}`;
 }
 
 // '||' を含むバージョン同士の比較（含まれる最大のバージョン同士を比較する）

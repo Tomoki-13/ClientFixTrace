@@ -71,7 +71,8 @@ function filterByMode(
  * クライアント名の絞り込み用のリストを作成
  */
 function extractTrimmed(filePath: string): string[] {
-  const matched: MatchClientPattern[] = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MatchClientPattern[];
+  const fileContent = fs.readFileSync(filePath, 'utf-8');
+  const matched = JSON.parse(fileContent) as unknown as MatchClientPattern[];
   const clientList_detected: string[] = extract(matched);
   return clientList_detected;
 }

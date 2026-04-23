@@ -1,6 +1,6 @@
 import { Item } from "../types/Item";
 import { Client_Ver } from "../types/VersionCommits";
-import versionUtil from "./versionUtil";
+import versionUtil from "../analysis/versionUtil";
 
 export interface TargetUpdate {
   libName: string;
