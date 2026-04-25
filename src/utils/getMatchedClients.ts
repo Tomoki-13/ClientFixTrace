@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import LoadJson from './loadJson';
-import CompareVersion from './compareVersion';
+import CompareVersion from '../analysis/compareVersion';
 import { MatchClientPattern } from '../types/Item';
 import { Client_Ver } from '../types/VersionCommits';
 
@@ -19,31 +19,18 @@ function get(
 }
 
 /**
- * バージョンを比較し、verがbase以上であるか判定する
- */
-function isVersionGreaterOrEqual(ver: string, base: string): boolean {
-  const vParts = CompareVersion.clean(ver);
-  const baseParts = CompareVersion.clean(base);
-
-  for (let i = 0; i < Math.max(vParts.length, baseParts.length); i++) {
-    const vNum = vParts[i] || 0;
-    const baseNum = baseParts[i] || 0;
-    if (vNum > baseNum) return true;
-    if (vNum < baseNum) return false;
-  }
-  return true;
-}
-
-/**
- * MatchClientPattern配列からクライアント名の配列を抽出する
+ * MatchClientPattern配列からクライアント名の配列を抽出・ユニーク化する
  */
 function extract(data: MatchClientPattern[]): string[] {
-  let result = data.map(item => item.client).filter((client): client is string => typeof client === 'string');
-  let clientNames = result.map(path => {
-    const parts = path.split('/');
-    return parts.slice(-2).join('/');
-  });
-  return clientNames;
+  const clientNames = data
+    .map(item => item.client)
+    .filter((client): client is string => typeof client === 'string')
+    .map(path => {
+      const parts = path.split('/');
+      return parts.slice(-2).join('/');
+    });
+
+  return Array.from(new Set(clientNames));
 }
 
 /**
@@ -54,10 +41,12 @@ function filterByMode(
   trimmedClients: string[],
 ): Client_Ver[] {
   const verHistory: any[] = LoadJson.clientVer(versionFilePath);
+
+  // LOOK: 抽出対象が0件なら、全件返すのではなく空配列を返す
   if (trimmedClients.length === 0) {
-    return verHistory as Client_Ver[];
+    return [];
   }
-  // 互換性確保のためのフィルタリング
+
   const result = verHistory.filter(item => {
     const clientName = item.C_client || item.client;
     if (!clientName) return false;
@@ -67,19 +56,14 @@ function filterByMode(
   return result as Client_Ver[];
 }
 
-/**
- * クライアント名の絞り込み用のリストを作成
- */
 function extractTrimmed(filePath: string): string[] {
   const fileContent = fs.readFileSync(filePath, 'utf-8');
   const matched = JSON.parse(fileContent) as unknown as MatchClientPattern[];
-  const clientList_detected: string[] = extract(matched);
-  return clientList_detected;
+  return extract(matched);
 }
 
 export default {
   get,
-  isVersionGreaterOrEqual,
   extract,
   filterByMode,
   extractTrimmed,

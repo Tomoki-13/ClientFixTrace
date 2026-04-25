@@ -5,7 +5,7 @@ import { detectByPattern } from "../../R-BC/src/core/detectByPattern";
 import { ExtractFunctionCallsResult } from "../../R-BC/src/types/ExtractFunctionCallsResult";
 
 import StatusBar from "../utils/statusBar";
-import GetTargetCommits from "../utils/targetCommits";
+import TargetCommits from "../utils/targetCommits";
 import OutputJson from "../utils/output_json";
 import GetAllFiles from "../utils/getAllFiles";
 import GetMatchedClients from '../utils/getMatchedClients';
@@ -159,7 +159,7 @@ interface ExecutionStat {
 
       // 解析対象となる具体的なコミット群の特定
       const filteredHistory = GetMatchedClients.get(matchFilePath, targetHistoryPath);
-      const targets = GetTargetCommits.get(filteredHistory, libName, postVersion);
+      const targets = TargetCommits.get(filteredHistory, libName, postVersion);
 
       if (targets.length === 0) continue;
 
@@ -174,7 +174,7 @@ interface ExecutionStat {
       fs.writeFileSync(commitLogPath, JSON.stringify(exportTargets, null, 2));
 
       // 検出用パターンの準備
-      const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8'));
+      const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8')) as any;
       const rawPatterns: any[] = patternData.patterns ? patternData.patterns.map((p: any) => p.pattern) : patternData;
       const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
         p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))

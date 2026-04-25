@@ -1,5 +1,5 @@
 import { VersionPair } from "../types/VersionPair";
-import versionUtil from "../utils/versionUtil";
+import versionUtil from "../analysis/versionUtil";
 import dataProcessor from "../utils/dataProcessor";
 
 //[[1.1.0,2.0.0,2.1.1],[2.0.0,3.0.0,4.0.0,5.0.0]]のようなクライアントごとのバージョン結果が出力
