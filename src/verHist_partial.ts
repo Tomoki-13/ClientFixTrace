@@ -138,7 +138,9 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
 
     console.log(`[Init] Loading datasets...`);
     const data: Item[] = await LoadJson.item(CONFIG.testResultPath);
-    const libVersionRanges = JSON.parse(fs.readFileSync(CONFIG.myDataPath, 'utf-8'));
+
+    // 型エラーによるイテレータの未定義を防ぐため、パース結果を配列型としてキャストする
+    const libVersionRanges = JSON.parse(fs.readFileSync(CONFIG.myDataPath, 'utf-8')) as { libName: string; preVersion: string; postVersion: string }[];
 
     // ライブラリごとにタスクをグループ化して、クライアントの一括抽出を行う
     const tasksByLib = new Map<string, any[]>();

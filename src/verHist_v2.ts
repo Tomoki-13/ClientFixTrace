@@ -1,3 +1,9 @@
+// 依存ライブラリのバージョン更新に伴うクライアントの履歴抽出・分析スクリプト
+// 【入力】
+// - CONFIG.testResultPath (必須): 全クライアントのテスト結果データ (test_result.json)
+// - CONFIG.myDataPath (任意): 分析対象のライブラリ名とバージョンペアを指定したJSON
+//   ※myDataPathが存在しない場合はtestResultPathから全件自動抽出(fullモード)として動作します
+
 import fs from "fs";
 import path from "path";
 import { Item } from "./types/Item";
@@ -15,9 +21,24 @@ import { trackPostUpdate } from "./analysis/postUpdateTracker";
 
 type RunMode = 'extract' | 'analyze' | 'full';
 
-// ==========================================
+// CSV出力用の型定義
+interface TrackingSummary {
+  libName: string;
+  preVersion: string;
+  postVersion: string;
+  state: string;
+  originalClients: number;
+  targetUpdatedClients: number;
+  maintained: number;
+  upgradedFurther: number;
+  totalDowngrades: number;
+  downgradeR1: number;
+  downgradeR2: number;
+  downgradeR3: number;
+  noReleaseCount: number;
+}
+
 // INPUT: 実行設定
-// ==========================================
 const CONFIG = {
   // --- 基本動作設定 ---
   // 実行モード: 'extract' (抽出のみ), 'analyze' (解析のみ), 'full' (抽出から解析まで全自動)
@@ -46,8 +67,11 @@ const CONFIG = {
   analyzeLibName: 'Brightspace',
   analyzePostVersion: '3.1.0'
 };
-
-async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, mode: RunMode, verHistory: any[] = [], targetPath: string = "") {
+/**
+ * データの保存と解析（分類）を行う補助関数
+ * 集計データを戻り値として返し、最終的なCSV作成に利用する
+ */
+async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, mode: RunMode, verHistory: any[] = [], targetPath: string = ""): Promise<TrackingSummary | null> {
   const { libName, preVersion, postVersion } = libTask;
   const outputDir = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/versionData/${dateStr}/${state}/${libName}-${postVersion}`);
   let population = 0;
@@ -67,14 +91,21 @@ async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, 
         verHistory = await LoadJson.clientVer(targetPath);
       } else {
         console.error(`  [Error] analyzeTargetHistoryPath does not exist.`);
-        return;
+        return null;
       }
     }
 
     population = verHistory.length;
+    let summary: TrackingSummary = {
+      libName, preVersion, postVersion, state,
+      originalClients: population, targetUpdatedClients: 0,
+      maintained: 0, upgradedFurther: 0, totalDowngrades: 0,
+      downgradeR1: 0, downgradeR2: 0, downgradeR3: 0, noReleaseCount: 0
+    };
 
     if (population > 0) {
       const targets = TargetCommits.get(verHistory, libName, postVersion);
+      summary.targetUpdatedClients = targets.length;
 
       const postUpdateTracking = trackPostUpdate(targets, verHistory, postVersion);
       OutputJson.createDir(outputDir);
@@ -82,8 +113,21 @@ async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, 
       fs.writeFileSync(trackingPath, JSON.stringify(postUpdateTracking, null, 2));
       console.log(`  [Analyze] Post-update tracking saved to ${trackingPath}`);
 
-      const inputList: string[][] = [];
+      // CSV出力用にトラッキング結果を集計する
+      const isDowngrade = (rel: any) => rel && rel.libVersionAtRelease && rel.libVersionAtRelease.includes('Downgraded');
+      
+      for (const track of postUpdateTracking) {
+        if (track.finalStatus === 'downgraded_eventually') summary.totalDowngrades++;
+        else if (track.finalStatus === 'upgraded_eventually') summary.upgradedFurther++;
+        else if (track.finalStatus === 'maintained') summary.maintained++;
+        else if (track.finalStatus === 'no_release') summary.noReleaseCount++;
 
+        if (isDowngrade(track.releases[0])) summary.downgradeR1++;
+        if (isDowngrade(track.releases[1])) summary.downgradeR2++;
+        if (isDowngrade(track.releases[2])) summary.downgradeR3++;
+      }
+
+      const inputList: string[][] = [];
       for (const t of targets) {
         const normPre = VersionUtil.normalize(t.L_preLibVersion);
         const normPost = VersionUtil.normalize(t.L_postLibVersion);
@@ -101,10 +145,14 @@ async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, 
 
       Classify_types(pairs, libName, postVersion, dateStr, state, countSuffix);
       console.log(`  [Analyze] Classification completed for ${state}: ${countSuffix}`);
+      
+      return summary;
     } else {
       console.log(`  [Analyze] No history data to analyze for ${state}.`);
+      return summary;
     }
   }
+  return null;
 }
 
 function Classify_types(data: VersionPair[], libName: string, postLibVersion: string, dateStr: string, state: string, countSuffix: string): void {
@@ -190,7 +238,7 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
     const tasksByLib = new Map<string, any[]>();
 
     //LOOK:mydata,デバッグ用_vinyl (1.2.0 -> 2.0.0)
-    // let tasks = [libVersionRanges[7]];
+    let tasks = [libVersionRanges[7]];
     // for (const task of tasks) {
     //   if (task) {
     //     console.log(`Loaded task: ${task.libName} (${task.preVersion} -> ${task.postVersion})`);
@@ -199,12 +247,15 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
     //   }
     // }
 
-    //LOOK:本番用
+    // //LOOK:本番用
     for (const task of libVersionRanges) {
       console.log(`Loaded task: ${task.libName} (${task.preVersion} -> ${task.postVersion})`);
       if (!tasksByLib.has(task.libName)) tasksByLib.set(task.libName, []);
       tasksByLib.get(task.libName)!.push(task);
     }
+
+    // 全ての処理結果をまとめる配列
+    const masterTrackingSummaries: TrackingSummary[] = [];
 
     for (const [libName, tasks] of tasksByLib.entries()) {
       const masterClientSet = new Set<string>();
@@ -268,15 +319,31 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
         const historyFail = masterHistory.filter(c => pairClients.fail.includes(c.C_client));
 
         if (historySucc.length > 0 && historyFail.length > 0) {
-          await saveAndAnalyzeData(task, 'success', dateStr, CONFIG.mode, historySucc);
-          await saveAndAnalyzeData(task, 'failure', dateStr, CONFIG.mode, historyFail);
+          const succSummary = await saveAndAnalyzeData(task, 'success', dateStr, CONFIG.mode, historySucc);
+          const failSummary = await saveAndAnalyzeData(task, 'failure', dateStr, CONFIG.mode, historyFail);
           
+          if (succSummary) masterTrackingSummaries.push(succSummary);
+          if (failSummary) masterTrackingSummaries.push(failSummary);
+
           appendCloneLog([validCloneLogPath, validVerDataLogPath], task.libName, task.preVersion, task.postVersion, historySucc.length, historyFail.length, 'SUCCESS');
         } else {
           appendCloneLog([invalidCloneLogPath, invalidVerDataLogPath], task.libName, task.preVersion, task.postVersion, historySucc.length, historyFail.length, 'EXCLUDED_ZERO_MATCH');
         }
       }
     }
+
+    // すべての処理が完了した後、versionDataフォルダの最上層に集計CSVを生成する
+    if (masterTrackingSummaries.length > 0) {
+      const trackingCsvPath = path.join(versionDataRoot, 'aggregate_tracking_summary.csv');
+      const trackHeader = "Library,PreVersion,PostVersion,State,OriginalClients,TargetUpdatedClients,Maintained,UpgradedFurther,TotalDowngrades,Downgrade_R1,Downgrade_R2,Downgrade_R3,NoReleaseCount\n";
+      const trackRows = masterTrackingSummaries.map(s => 
+        `${s.libName},${s.preVersion},${s.postVersion},${s.state},${s.originalClients},${s.targetUpdatedClients},${s.maintained},${s.upgradedFurther},${s.totalDowngrades},${s.downgradeR1},${s.downgradeR2},${s.downgradeR3},${s.noReleaseCount}`
+      ).join('\n');
+      
+      fs.writeFileSync(trackingCsvPath, trackHeader + trackRows, 'utf8');
+      console.log(`\n[Done] Aggregate Tracking Summary CSV generated at: ${trackingCsvPath}`);
+    }
+
   } else if (CONFIG.mode === 'analyze') {
     const targetPath = CONFIG.analyzeTargetHistoryPath;
     const task = {

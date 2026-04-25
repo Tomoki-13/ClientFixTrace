@@ -5,7 +5,7 @@ import { detectByPattern } from "../R-BC/src/core/detectByPattern";
 import { ExtractFunctionCallsResult } from "../R-BC/src/types/ExtractFunctionCallsResult";
 
 import StatusBar from "./utils/statusBar";
-import GetTargetCommits from "./utils/targetCommits";
+import TargetCommits from "./analysis/targetCommits";
 import OutputJson from "./utils/output_json";
 import GetAllFiles from "./utils/getAllFiles";
 import GetMatchedClients from './utils/getMatchedClients';
@@ -27,7 +27,7 @@ const CONFIG = {
   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-04-14-11-23-05-all',
   SOURCE_CLIENT_REPOS: '../clonedata/repos/clientRepos_all',
   BASE_CLONE_DIR: '../clonedata/repos/analysis_temp_repos',
-  RESULT_BASE_DIR: '../output/specificData',
+  RESULT_BASE_DIR: '../output/v2/specificData',
   STATES: ['success', 'failure'] as const
 };
 
@@ -150,11 +150,12 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
       const patternModeFlag = patternFile.includes('detectpatternlist.json') ? 0 : 1;
 
       const filteredHistory = GetMatchedClients.get(matchFilePath, targetHistoryPath);
-      const targets = GetTargetCommits.get(filteredHistory, libName, postVersion);
+      const targets = TargetCommits.get(filteredHistory, libName, postVersion);
 
       if (targets.length === 0) continue;
 
       const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${targetState}_list.json`);
+      // 型エラー回避：mapに渡す引数 't' の型を明示的に指定
       const exportTargets = targets.map((t: { C_client: string; L_postLibVersion: string; C_commitID: string; C_tagCommitID: string }) => ({
         client: t.C_client,
         libVersion: t.L_postLibVersion,
@@ -184,7 +185,7 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
       // クライアントごとの処理状態をフェーズ間で引き継ぐためのマップ
       const clientStatus = new Map<string, 'active' | 'downgraded' | 'no_release'>();
-      targets.forEach(t => clientStatus.set(t.C_client, 'active'));
+      targets.forEach((t: any) => clientStatus.set(t.C_client, 'active'));
 
       /**
        * 入力: phaseName (フェーズ名), phaseIndex (リリース履歴のインデックス)

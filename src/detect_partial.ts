@@ -5,7 +5,7 @@ import { detectByPattern } from "../R-BC/src/core/detectByPattern";
 import { ExtractFunctionCallsResult } from "../R-BC/src/types/ExtractFunctionCallsResult";
 
 import StatusBar from "./utils/statusBar";
-import GetTargetCommits from "./utils/targetCommits";
+import TargetCommits from "./utils/targetCommits";
 import OutputJson from "./utils/output_json";
 import GetAllFiles from "./utils/getAllFiles";
 import GetMatchedClients from './utils/getMatchedClients';
@@ -39,7 +39,7 @@ interface ExecutionStat {
 }
 
 (async () => {
-  const taskList: { libName: string; preVersion?: string; postVersion: string }[] = JSON.parse(fs.readFileSync(CONFIG.TASK_LIST_PATH, 'utf-8'));
+  const taskList = JSON.parse(fs.readFileSync(CONFIG.TASK_LIST_PATH, 'utf-8')) as { libName: string; preVersion?: string; postVersion: string }[];
 
   const historyFiles = await GetAllFiles.getRecursively(CONFIG.HISTORY_BASE_DIR);
   const rbcFiles = await GetAllFiles.getRecursively(CONFIG.RBC_DATA_ROOT);
@@ -57,7 +57,7 @@ interface ExecutionStat {
     currentStep++;
     const { libName, postVersion } = task;
     const preVersion = task.preVersion || 'unknown'; // mydata.json に preVersion が無い場合のフォールバック
-    
+
     // 抽出側の命名規則に合わせ、英数字以外を除去
     const verKey = postVersion.replace(/[^a-zA-Z0-9]/g, '');
 
@@ -90,7 +90,7 @@ interface ExecutionStat {
     console.log(`\n--- [Analysis] ${libName}-${postVersion} ---`);
 
     const filteredHistory = GetMatchedClients.get(matchFilePath, targetHistoryPath);
-    const targets = GetTargetCommits.get(filteredHistory, libName, postVersion);
+    const targets = TargetCommits.get(filteredHistory, libName, postVersion);
 
     if (targets.length === 0) {
       console.log(`  [Skip] No valid updated clients found.`);
@@ -98,7 +98,9 @@ interface ExecutionStat {
     }
 
     const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${CONFIG.STATE}_list.json`);
-    const exportTargets = targets.map(t => ({
+
+    // t の型を明示的に指定する
+    const exportTargets = targets.map((t: { C_client: string; L_postLibVersion: string; C_commitID: string; C_tagCommitID: string }) => ({
       client: t.C_client,
       libVersion: t.L_postLibVersion,
       commitID: t.C_commitID,
@@ -106,11 +108,18 @@ interface ExecutionStat {
     }));
     fs.writeFileSync(commitLogPath, JSON.stringify(exportTargets, null, 2));
 
-    const patternData = JSON.parse(fs.readFileSync(patternFile, 'utf-8'));
-    const rawPatterns: any[] = patternData.patterns ? patternData.patterns.map((p: any) => p.pattern) : patternData;
+    const fileContent = fs.readFileSync(patternFile, 'utf-8');
+    const patternData = JSON.parse(fileContent) as any;
+
+    // patternData が null ではなく、かつ patterns プロパティを持っているか安全に確認
+    const rawPatterns: any[] = (patternData && patternData.patterns)
+      ? patternData.patterns.map((p: any) => p.pattern)
+      : (patternData || []);
+
     const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
       p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))
     );
+    // ==========================================
 
     const baseFolderName = `${libName}-${postVersion}_${CONFIG.STATE}`;
     const baseClonePath = path.resolve(process.cwd(), CONFIG.UPDATE_CLIENT_BASE, baseFolderName);
@@ -119,6 +128,13 @@ interface ExecutionStat {
     if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
     OutputJson.createDir(baseClonePath);
 
+    /**
+     * [入出力説明]
+     * 入力:
+     * - type ('update' | 'release'): 解析を実行するフェーズの指定
+     * 出力:
+     * - Promise<void>: 対象コミットへのチェックアウトと R-BC による検出を実行し、結果を保存・集計する
+     */
     const runAnalysis = async (type: 'update' | 'release') => {
       const absCloneDir = path.resolve(baseClonePath, type);
       const absOutDir = path.resolve(baseResultPath, type);
