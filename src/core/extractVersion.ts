@@ -1,3 +1,4 @@
+// extractVersion.ts
 import fs from "fs";
 import path from 'path';
 import OutputJson from "../utils/output_json";
@@ -7,77 +8,16 @@ import { Client_Ver } from "../types/VersionCommits";
 import pLimit from "p-limit";
 
 /**
- * 標準的な抽出用 (clonedata/repos/standard)
- */
-async function extractVersion(client_list: string[], libName: string, libNum: string = '0', state: string = ''): Promise<Client_Ver[]> {
-  const std_Dir: string = path.resolve(process.cwd(), '../clonedata/repos/clientRepos/');
-  OutputJson.createDir(std_Dir);
-
-  const cloneDir = path.join(std_Dir, libName);
-  OutputJson.createDir(cloneDir);
-
-  let verHistory: Client_Ver[] = [];
-
-  for (const client of client_list) {
-    try {
-      const repoPath = await CloneRepo.cloneRepo(client, cloneDir);
-      if (!repoPath) {
-        console.warn(`clone failure: ${client}`);
-        continue;
-      }
-      const c_data: Client_Ver = await checkoutCommit(repoPath, libName);
-      if (c_data && c_data.verList.length > 1) {
-        verHistory = verHistory.concat(c_data);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
-  return verHistory;
-}
-
-/**
- * 複数データ一括実行用 (clonedata/repos/clientRepos_all)
- */
-async function extractVersion_all(client_list: string[], libName: string, libNum: string = '0', state: string = ''): Promise<Client_Ver[]> {
-  const cleanVersion = libNum.replace(/[^a-zA-Z0-9]/g, '');
-  const originalCwd = process.cwd();
-  const std_Dir: string = path.resolve(process.cwd(), '../clonedata/repos/clientRepos_all/');
-  const cloneDir = path.join(std_Dir, libName, cleanVersion, state);
-
-  if (!fs.existsSync(cloneDir)) {
-    fs.mkdirSync(cloneDir, { recursive: true });
-  }
-
-  let verHistory: Client_Ver[] = [];
-
-  for (const client of client_list) {
-    try {
-      const repoPath = await CloneRepo.cloneRepo(client, cloneDir);
-      if (!repoPath) {
-        console.warn(`clone failure: ${client}`);
-        continue;
-      }
-      const c_data: Client_Ver = await checkoutCommit(repoPath, libName);
-      if (c_data && c_data.verList.length > 1) {
-        verHistory = verHistory.concat(c_data);
-      }
-      process.chdir(originalCwd);
-    } catch (error) {
-      console.error(error);
-      process.chdir(originalCwd);
-    }
-  }
-  return verHistory;
-}
-
-/**
- * マスター抽出用 (clonedata/repos/master)
- * LOOK:テスト中のため/temp/に保存するように変更しています。
+ * 【本番用】リポジトリの並列クローンと履歴抽出（原本キャッシュの作成）
+ * * 指定されたクライアント群を原本ディレクトリにクローン（既に存在する場合は再利用）し、
+ * 依存ライブラリの更新履歴とリリースタグの情報を抽出します。
+ * * - 保存先: `../clonedata/clientRepos/{libName}/{clientName}` （システム共通の永続キャッシュ）
+ * - 実行方式: `p-limit` を用いた並列処理 (最大並列数: 5) により高速に抽出
  */
 async function extractVersion_master(client_list: string[], libName: string): Promise<Client_Ver[]> {
   const originalCwd = process.cwd();
-  const std_Dir = path.resolve(process.cwd(), '../clonedata/temp/master/');
+  // 抽出先を統合された永続原本キャッシュディレクトリに指定
+  const std_Dir = path.resolve(process.cwd(), '../../clonedata/clientRepos/');
   const cloneDir = path.join(std_Dir, libName);
 
   if (!fs.existsSync(cloneDir)) {
@@ -117,7 +57,11 @@ async function extractVersion_master(client_list: string[], libName: string): Pr
 }
 
 /**
- * ベンチマーク用 (clonedata/repos/master_seq 等)
+ * 【テスト・ベンチマーク用】実行速度算出用
+ * * 本番のキャッシュ領域(`clientRepos`)を汚さずに、任意のディレクトリ(`temp`)へクローンして
+ * 抽出のパフォーマンステストや一時的な検証を行うための関数です。
+ * * - 保存先: `../../clonedata/temp/{dirSuffix}/{libName}/{clientName}`
+ * - 実行方式: `p-limit` を用いた並列処理 (並列数を引数 `concurrency` で柔軟に指定可能)
  */
 async function extractVersion_ben(
   client_list: string[],
@@ -158,7 +102,7 @@ async function extractVersion_ben(
   }));
 
   const results = await Promise.all(promises);
-  console.log();
+  console.log(); // ベンチマークログの改行用
 
   for (const res of results) {
     if (res) verHistory = verHistory.concat(res);
@@ -168,8 +112,6 @@ async function extractVersion_ben(
 }
 
 export default {
-  extractVersion,
-  extractVersion_all,
   extractVersion_master,
   extractVersion_ben
 };

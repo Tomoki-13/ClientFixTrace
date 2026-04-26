@@ -9,6 +9,7 @@ const execAsync = promisify(exec);
 
 // リポジトリをクローンする関数(パス名を返す)
 async function cloneRepo(repo: string, clone_dir: string): Promise<string|null> {
+    // /clonedata/temp/master/big.js
     const repoUrl = `https://github.com/${repo}.git`;
     const match = repo.match(/(.+?)\/(.+)/);
 

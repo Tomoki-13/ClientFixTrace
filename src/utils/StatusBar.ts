@@ -1,7 +1,4 @@
-import { clear } from "console";
 import readline from "readline";
-import { WriteStream } from "tty";
-
 class StatusBar {
   static message = '';
   static isTTY = (process.stdout as any).isTTY === true;

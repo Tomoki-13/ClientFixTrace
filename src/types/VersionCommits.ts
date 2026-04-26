@@ -1,15 +1,38 @@
 // 依存ライブラリの更新とそれに関連するクライアントのリリース情報を管理
 export interface VersionCommits {
-    L_libVersion: string;        // 依存ライブラリのバージョン
-    C_commitID: string;          // ライブラリを更新したコミットID
-    C_tagCommitID: string;       // 更新後、最も近いリリースのコミットID
-    C_releaseVersion: string;    // リリース時のクライアントのバージョン
-    C_preReleaseVersion: string; // リリース直前のクライアントのバージョン
+  L_libVersion: string;        // 依存ライブラリのバージョン
+  C_commitID: string;          // ライブラリを更新したコミットID
+  C_tagCommitID: string;       // 更新後、最も近いリリースのコミットID
+  C_releaseVersion: string;    // リリース時のクライアントのバージョン
+  C_preReleaseVersion: string; // リリース直前のクライアントのバージョン
 }
 
 export interface Client_Ver {
-    C_client: string;            // クライアント名（user/repo）
-    verList: VersionCommits[];   // バージョン変遷のリスト
+  C_client: string;            // クライアント名（user/repo）
+  verList: VersionCommits[];   // バージョン変遷のリスト
+}
+
+export interface ReleaseHistory {
+  C_tagCommitID: string;
+  C_releaseVersion: string;
+  L_libVersion: string;
+}
+
+export interface VersionCommits {
+  L_libVersion: string;
+  C_commitID: string;
+  C_tagCommitID: string;
+  C_releaseVersion: string;
+  C_preReleaseVersion: string;
+  C_releases?: ReleaseHistory[]; // [V2拡張] 最大3件のリリース履歴
+}
+
+// 内部処理用のリリース履歴データ
+export interface ReleaseInfo {
+  C_version: string;           // クライアント自身の新バージョン
+  C_preVersion: string;        // クライアント自身の旧バージョン
+  C_commitID: string;          // バージョンが更新されたコミットID
+  timestamp: string;           // 時系列比較用
 }
 
 // 特定のバージョン更新とリリースを紐付けた抽出データ（Detect用）
@@ -21,12 +44,4 @@ export interface specificCommit {
     L_postLibVersion: string;    // 更新後のライブラリバージョン
     C_commitID: string;          // 依存ライブラリ更新時のコミットID
     C_tagCommitID: string;       // 更新後のリリースコミットID
-}
-
-// 内部処理用のリリース履歴データ
-export interface ReleaseInfo {
-    C_version: string;           // クライアント自身の新バージョン
-    C_preVersion: string;        // クライアント自身の旧バージョン
-    C_commitID: string;          // バージョンが更新されたコミットID
-    timestamp: string;           // 時系列比較用
 }
