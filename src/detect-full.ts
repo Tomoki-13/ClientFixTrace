@@ -1,3 +1,4 @@
+// detect-full.ts
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
@@ -9,7 +10,6 @@ import OutputJson from "./utils/output_json";
 import GetAllFiles from "./utils/getAllFiles";
 import GetMatchedClients from './utils/getMatchedClients';
 
-// 外部ファイル化した型定義のインポート
 import { ExtractFunctionCallsResult, ExtendedDetectionOutput } from "./types/RbcTypes";
 import { TargetUpdate, ExecutionStat, ClientTrack, ExcludedClient } from "./types/AnalysisTypes";
 
@@ -17,17 +17,18 @@ import { TargetUpdate, ExecutionStat, ClientTrack, ExcludedClient } from "./type
 // INPUT: 実行設定
 // ==========================================
 const CONFIG = {
-  CLONE_SUMMARY_CSV: '../datasets/analysis_target/verdata/2026-04-02-17-26-21-all/valid_clone_summary.csv',
-  VERSION_DATA_DIR: '../output/v2/versionData/2026-04-22-14-29-19-full',
+  CLONE_SUMMARY_CSV: '../output/v2/versionData/2026-04-26-01-52-52-all/valid_clone_summary.csv',
+  VERSION_DATA_DIR: '../output/v2/versionData/2026-04-26-01-52-52-all',
   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-04-14-11-23-05-all',
-  SOURCE_CLIENT_REPOS: '../clonedata/repos/clientRepos_all',
   
-  // 一時的なチェックアウト作業用ディレクトリ（処理後に自動削除されます）
-  BASE_CLONE_DIR: '../clonedata/repos/analysis_temp_repos',
+  SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
+  BASE_CLONE_DIR: '../clonedata/analysis_temp_repos',
   
-  RESULT_BASE_DIR: '../output/specificData',
+  RESULT_BASE_DIR: '../output/v2/specificData',
   STATES: ['success', 'failure'] as const,
-  MAX_RELEASES_TO_TRACK: 1
+  MAX_RELEASES_TO_TRACK: 1,
+
+  DEBUG_MODE: false
 };
 
 StatusBar.init();
@@ -53,12 +54,14 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 }
 
 (async () => {
+  console.log(`\n[DEBUG: 1] Script Started.`);
   console.log(`[Init] Checking clone summary CSV: ${CONFIG.CLONE_SUMMARY_CSV}`);
 
   if (!fs.existsSync(CONFIG.CLONE_SUMMARY_CSV)) {
     const autoPath = path.join(CONFIG.VERSION_DATA_DIR, 'valid_clone_summary.csv');
     if (fs.existsSync(autoPath)) {
       CONFIG.CLONE_SUMMARY_CSV = autoPath;
+      console.log(`[DEBUG: 1.5] Auto-corrected CSV path to: ${autoPath}`);
     } else {
       console.error(`[Error] CSV file not found!`);
       StatusBar.finish();
@@ -85,10 +88,8 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
   let taskList = allTasks.filter(t => t.SuccessCloned > 0 || t.FailureCloned > 0);
 
-  const DEBUG_MODE = true; 
-  if (DEBUG_MODE) {
+  if (CONFIG.DEBUG_MODE) {
     taskList = taskList.filter(t => t.libName === "acorn");
-    console.log(`[Debug Mode] Filtered taskList to ${taskList.length} tasks.`);
   }
 
   if (taskList.length === 0) {
@@ -97,18 +98,22 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
     return;
   }
 
-  console.log(`[Init] Scanning RBC Pattern files...`);
-  const rbcFiles = await GetAllFiles.getRecursively(CONFIG.RBC_DATA_ROOT);
+  console.log(`[DEBUG: 2] Loaded ${taskList.length} tasks from CSV.`);
 
-  const dateStr = OutputJson.formatDateTime(new Date()) + (DEBUG_MODE ? "_debug" : "");
+  // LOOK: ここにあった「全ファイルスキャン (GetAllFiles.getRecursively)」を削除しました。
+  // 代わりにループの中でピンポイントでディレクトリを探します。
+
+  const dateStr = OutputJson.formatDateTime(new Date());
   const summaryOutDir = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExtendedExecutionStat[] = [];
   const allClientTracks: ClientTrack[] = [];
-  const allExcludedClients: ExcludedClient[] = []; 
+  const allExcludedClients: ExcludedClient[] = [];
   const totalSteps = taskList.length * CONFIG.STATES.length;
   let currentStep = 0;
+
+  console.log(`[DEBUG: 3] Entering Main Task Loop.`);
 
   for (const task of taskList) {
     const { libName, preVersion, postVersion } = task;
@@ -131,9 +136,9 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
         phases.forEach(phaseName => {
           executionStats.push({
             library: libName, preVersion, postVersion, state: targetState, phase: phaseName,
-            rbcTotalPatternCount: 0, 
+            rbcTotalPatternCount: 0,
             rbcPatternCountAll: rAll, rbcPatternCountSuccess: rSuc, rbcPatternCountFailure: rFail,
-            originalMatchedClients: 0, targetUpdatedClients: 0, activeAnalyzed: 0, 
+            originalMatchedClients: 0, targetUpdatedClients: 0, activeAnalyzed: 0,
             notFixed_PatternDetected: 0, fixed_ImplementationChanged: 0,
             downgraded: 0, noRelease: 0, unknownError: 0
           });
@@ -160,16 +165,22 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
       }
       const targetHistoryPath = path.join(stateDataDir, historyFileName);
 
-      const rbcTargetDirBase = rbcFiles.find(f => f.includes(`${libName}_${verKey}`));
-      if (!rbcTargetDirBase) {
+      // =========================================================================
+      // LOOK: フリーズ解消の肝。全件スキャンをやめ、対象のパスを直接指定して存在確認。
+      // =========================================================================
+      const rbcTargetDir = path.resolve(CONFIG.RBC_DATA_ROOT, `${libName}_${verKey}`);
+      
+      if (!fs.existsSync(rbcTargetDir)) {
         recordEmptyStats();
         continue;
       }
-      const rbcTargetDir = rbcTargetDirBase.split(`${libName}_${verKey}`)[0] + `${libName}_${verKey}`;
 
-      const successDetectFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.endsWith('success_detect.json'));
-      const failureDetectFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.endsWith('failure_detect.json'));
-      const patternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && (f.includes('detectpatternlist.json') || f.includes('patternList.json')));
+      // 対象ディレクトリの中だけスキャンするので一瞬で終わります。
+      const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
+
+      const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
+      const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
+      const patternFile = localRbcFiles.find(f => f.includes('detectpatternlist.json') || f.includes('patternList.json'));
 
       let rbcPatternCountSuccess = 0;
       let rbcPatternCountFailure = 0;
@@ -178,13 +189,13 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
         try {
           const data = JSON.parse(fs.readFileSync(successDetectFile, 'utf-8')) as ExtendedDetectionOutput;
           rbcPatternCountSuccess = Number(data.totalClients) || 0;
-        } catch (e) {}
+        } catch (e) { }
       }
       if (failureDetectFile) {
         try {
           const data = JSON.parse(fs.readFileSync(failureDetectFile, 'utf-8')) as ExtendedDetectionOutput;
           rbcPatternCountFailure = Number(data.totalClients) || 0;
-        } catch (e) {}
+        } catch (e) { }
       }
       const rbcPatternCountAll = rbcPatternCountSuccess + rbcPatternCountFailure;
 
@@ -196,7 +207,7 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           if (Array.isArray(data.detectedClients)) {
             rbcMatchedClients = data.detectedClients;
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       if (!currentDetectFile || !patternFile) {
@@ -255,8 +266,8 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
       const baseClonePath = path.resolve(CONFIG.BASE_CLONE_DIR, baseFolderName);
       const baseResultPath = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
 
-      // 前回のゴミが残っていたら削除
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
+      OutputJson.createDir(baseClonePath);
 
       const clientStatus = new Map<string, 'active' | 'downgraded' | 'no_release' | 'unknown_error'>();
       const clientTracks = new Map<string, ClientTrack>();
@@ -340,15 +351,17 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           }
 
           activeAnalyzedCount++;
-          const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, verKey, targetState, item.C_client);
+          // 修正箇所: clientRepos 直下の libName/clientName を参照するように構造をフラット化
+          const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
           const destPath = path.resolve(absCloneDir, item.C_client);
 
           try {
-            if (!fs.existsSync(sourcePath)) continue;
-            // 1. クローン済みのディレクトリからコピーする
+            if (!fs.existsSync(sourcePath)) {
+               // ログ出力: 見つからない場合にどこのパスを探したかを表示
+               continue;
+            }
             fs.mkdirSync(path.dirname(destPath), { recursive: true });
             fs.cpSync(sourcePath, destPath, { recursive: true });
-            // 2. 目的のコミットハッシュへチェックアウト
             execSync(`git -C "${destPath}" checkout -f ${targetHash}`, { stdio: 'ignore' });
             cloneSuccessCount++;
           } catch (err) { }
@@ -356,9 +369,9 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
         let detectedClientsCount = 0;
         const detectedClients = new Set<string>();
-        
+
         if (cloneSuccessCount > 0) {
-          // 3. パターン検出の実行（結果は absOutDir にJSONとして保存される）
+
           await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
 
           const outputFiles = fs.readdirSync(absOutDir).filter(f => f.endsWith('.json'));
@@ -370,7 +383,7 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
               }
             }
           }
-          
+
           detectedClientsCount = detectedClients.size;
 
           for (const file of outputFiles) {
@@ -380,7 +393,6 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           }
         }
 
-        // ステータスの記録
         for (const item of targets) {
           const track = clientTracks.get(item.C_client)!;
           const currentStatus = clientStatus.get(item.C_client);
@@ -390,14 +402,14 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           else if (currentStatus === 'no_release') statusToRecord = 'No Release';
           else if (currentStatus === 'unknown_error') statusToRecord = 'Unknown Error';
           else if (currentStatus === 'active') {
-             const destPath = path.resolve(absCloneDir, item.C_client);
-             if (!fs.existsSync(destPath)) {
-                statusToRecord = 'Clone Failed';
-             } else if (detectedClients.has(item.C_client)) {
-                statusToRecord = 'Not Fixed (Pattern Detected)';
-             } else {
-                statusToRecord = 'Fixed (Impl Changed)';
-             }
+            const destPath = path.resolve(absCloneDir, item.C_client);
+            if (!fs.existsSync(destPath)) {
+              statusToRecord = 'Clone Failed';
+            } else if (detectedClients.has(item.C_client)) {
+              statusToRecord = 'Not Fixed (Pattern Detected)';
+            } else {
+              statusToRecord = 'Fixed (Impl Changed)';
+            }
           }
 
           if (phaseName === 'update') track.Update_Status = statusToRecord;
@@ -407,31 +419,27 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
         }
 
         const implementationChangedCount = activeAnalyzedCount - detectedClientsCount;
-        
+
         executionStats.push({
           library: libName, preVersion, postVersion, state: targetState, phase: phaseName,
-          rbcTotalPatternCount: 0, 
+          rbcTotalPatternCount: 0,
           rbcPatternCountAll,
           rbcPatternCountSuccess,
           rbcPatternCountFailure,
           originalMatchedClients: targets.length,
           targetUpdatedClients: targets.length,
-          activeAnalyzed: activeAnalyzedCount, 
-          notFixed_PatternDetected: detectedClientsCount, 
+          activeAnalyzed: activeAnalyzedCount,
+          notFixed_PatternDetected: detectedClientsCount,
           fixed_ImplementationChanged: Math.max(0, implementationChangedCount),
           downgraded: downgradeCount, noRelease: noReleaseCount, unknownError: unknownErrorCount
         });
 
-        // =========================================================================
-        // LOOK: クリーンアップ処理 (ディスク容量・メモリ節約)
-        // 解析と状態の記録が終わった「ソースコードの一時コピー群」をここで全て削除する。
-        // 解析結果(JSON)は既に absOutDir に保存されているため、ソースコードは不要となる。
-        // =========================================================================
+        // 即時削除
         if (fs.existsSync(absCloneDir)) {
           fs.rmSync(absCloneDir, { recursive: true, force: true });
         }
-
-      }; // end of runAnalysis
+        console.log(`[DEBUG]   -> Phase: ${phaseName} finished.`);
+      };
 
       await runAnalysis('update', -1);
       for (let i = 0; i < Math.min(3, CONFIG.MAX_RELEASES_TO_TRACK); i++) {
@@ -442,11 +450,9 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
         allClientTracks.push(track);
       }
 
-      // 該当タスク・ステータス全体のベースディレクトリも用済みなら削除
       if (fs.existsSync(baseClonePath)) {
         fs.rmSync(baseClonePath, { recursive: true, force: true });
       }
-
     }
   }
 
@@ -454,10 +460,10 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
   if (executionStats.length > 0 || allExcludedClients.length > 0) {
     const safeDateStr = dateStr.replace(/[: ]/g, '_');
-    
+
     if (executionStats.length > 0) {
       const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,RBC_TotalPatternCount,OriginalMatchedClients,TargetUpdatedClients,ActiveAnalyzed,NotFixed_PatternDetected,Fixed_ImplementationChanged,Downgraded,NoRelease,UnknownError\n';
-      
+
       const writeCsv = (stats: ExtendedExecutionStat[], type: 'all' | 'success' | 'failure') => {
         if (stats.length === 0) return;
         const csvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `analysis_summary_${type}_${safeDateStr}.csv`);
@@ -478,27 +484,24 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
     if (allClientTracks.length > 0) {
       const detailedHeader = 'Library,Client,State,PreVersion,PostVersion,Update_LibVer,Update_Status,R1_LibVer,R1_Status,R2_LibVer,R2_Status,R3_LibVer,R3_Status\n';
-      const detailedRows = allClientTracks.map(t => 
+      const detailedRows = allClientTracks.map(t =>
         `${t.Library},${t.Client},${t.State},${t.PreVersion},${t.PostVersion},${t.Update_LibVer},${t.Update_Status},${t.R1_LibVer},${t.R1_Status},${t.R2_LibVer},${t.R2_Status},${t.R3_LibVer},${t.R3_Status}`
       ).join('\n');
 
       const detailedCsvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `client_detailed_tracking_${safeDateStr}.csv`);
       fs.writeFileSync(detailedCsvPath, detailedHeader + detailedRows, 'utf8');
-      console.log(`\n[Done] Client Detailed Tracking CSV generated: ${detailedCsvPath}`);
     }
 
     if (allExcludedClients.length > 0) {
       const excludedHeader = 'Library,Client,State,PreVersion,PostVersion\n';
-      const excludedRows = allExcludedClients.map(e => 
+      const excludedRows = allExcludedClients.map(e =>
         `${e.Library},${e.Client},${e.State},${e.PreVersion},${e.PostVersion}`
       ).join('\n');
 
       const excludedCsvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `excluded_clients_summary_${safeDateStr}.csv`);
       fs.writeFileSync(excludedCsvPath, excludedHeader + excludedRows, 'utf8');
-      console.log(`[Done] Excluded Clients Summary CSV generated: ${excludedCsvPath}`);
     }
 
-  } else {
-    console.log("\n[Exit] No detection targets were processed.");
   }
+  console.log(`\n[DEBUG] Script completed entirely.`);
 })();
