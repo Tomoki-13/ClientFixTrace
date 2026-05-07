@@ -12,23 +12,15 @@ import GetMatchedClients from './utils/getMatchedClients';
 
 import { ExtractFunctionCallsResult, ExtendedDetectionOutput } from "./types/RbcTypes";
 
-// ==========================================
-// INPUT: 実行設定 (特定のライブラリを調べる立ち位置を維持)
-// ==========================================
 const CONFIG = {
-  // 分析対象タスクのリスト
   TASK_LIST_PATH: '../datasets/mydata/mydata.json',
-  // 抽出された履歴データ(version_history-*.json)の格納先
   HISTORY_BASE_DIR: '../datasets/analysis_target/current/2026-02-24-08-48-48',
-  // R-BCによる事前のパターン検出結果(detect.json等)の格納先
   RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/fulldataSample',
-  // 大元のクローンキャッシュ（永続保存）
-  SOURCE_CLIENT_REPOS: '../clientRepos',
-  // 一時的なチェックアウト作業用ディレクトリ（処理後に自動削除）
-  UPDATE_CLIENT_BASE: '../client_update_temp',
-  // 調査対象とするビルド/テストの状態
+  
+  SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
+  UPDATE_CLIENT_BASE: '../clonedata/analysis_temp_repos',
+  
   STATE: 'success',
-  // 解析結果(JSON)および集計サマリー(CSV)の出力先
   RESULT_BASE_DIR: '../output/specificData'
 };
 
@@ -40,7 +32,7 @@ interface PartialExecutionStat {
   postVersion: string;
   state: string;
   phase: string;
-  originalMatchedClients: number;
+  rbcTotalPatternCount: number;
   targetUpdatedClients: number;
   postUpdateMatchedClients: number;
 }
@@ -51,12 +43,10 @@ interface PartialExecutionStat {
     return;
   }
 
-  // 型エラー対応：パース結果を明示的に配列としてキャスト
   const fileContent = fs.readFileSync(CONFIG.TASK_LIST_PATH, 'utf-8');
   const taskList = JSON.parse(fileContent) as { libName: string; preVersion?: string; postVersion: string }[];
 
   const historyFiles = await GetAllFiles.getRecursively(CONFIG.HISTORY_BASE_DIR);
-  const rbcFiles = await GetAllFiles.getRecursively(CONFIG.RBC_DATA_ROOT);
 
   const dateStr = OutputJson.formatDateTime(new Date());
 
@@ -81,33 +71,34 @@ interface PartialExecutionStat {
       path.basename(f).startsWith(`version_history-${CONFIG.STATE}`)
     );
 
-    const rbcTargetDirBase = rbcFiles.find(f => f.includes(`${libName}_${verKey}`));
-    const rbcTargetDir = rbcTargetDirBase ? rbcTargetDirBase.split(libName + '_' + verKey)[0] + libName + '_' + verKey : null;
+    if (!targetHistoryPath) continue;
 
-    if (!targetHistoryPath || !rbcTargetDir) {
-      console.warn(`\n[Warn] History or RBC data not found for ${libName}-${postVersion}. Skipping.`);
-      continue;
-    }
+    const rbcTargetDir = path.resolve(CONFIG.RBC_DATA_ROOT, `${libName}_${verKey}`);
+    if (!fs.existsSync(rbcTargetDir)) continue;
 
-    const detectFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.endsWith(`${CONFIG.STATE}_detect.json`));
-    const detectPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('detectpatternlist.json'));
-    const fallbackPatternFile = rbcFiles.find(f => f.startsWith(rbcTargetDir) && f.includes('patternList.json'));
+    const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
+
+    const detectFile = localRbcFiles.find(f => f.endsWith(`${CONFIG.STATE}_detect.json`));
+    const detectPatternFile = localRbcFiles.find(f => f.includes('detectpatternlist.json'));
+    const fallbackPatternFile = localRbcFiles.find(f => f.includes('patternList.json'));
 
     const patternFile = detectPatternFile || fallbackPatternFile;
 
     if (!detectFile || !patternFile) continue;
 
     let rbcMatchedClients: string[] = [];
+    let rbcTotalClientsCount = 0;
     try {
       const data = JSON.parse(fs.readFileSync(detectFile, 'utf-8')) as ExtendedDetectionOutput;
+      rbcTotalClientsCount = Number(data.totalClients) || 0;
       if (Array.isArray(data.detectedClients)) {
         rbcMatchedClients = data.detectedClients;
       }
     } catch (e) {}
 
-    const patternModeFlag = detectPatternFile ? 0 : 1;
+    if (rbcTotalClientsCount === 0) continue;
 
-    console.log(`\n--- [Analysis] ${libName}-${postVersion} ---`);
+    const patternModeFlag = detectPatternFile ? 0 : 1;
 
     const filteredHistory = GetMatchedClients.filterByMode(targetHistoryPath, rbcMatchedClients);
     const rawTargets = TargetCommits.get(filteredHistory, libName, postVersion);
@@ -120,13 +111,9 @@ interface PartialExecutionStat {
     }
     const targets = Array.from(uniqueTargetsMap.values());
 
-    if (targets.length === 0) {
-      console.log(`  [Skip] No valid updated clients found.`);
-      continue;
-    }
+    if (targets.length === 0) continue;
 
     const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${CONFIG.STATE}_list.json`);
-
     const exportTargets = targets.map((t: { C_client: string; L_postLibVersion: string; C_commitID: string; C_tagCommitID: string }) => ({
       client: t.C_client,
       libVersion: t.L_postLibVersion,
@@ -158,19 +145,23 @@ interface PartialExecutionStat {
       const absOutDir = path.resolve(baseResultPath, type);
       const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
 
-      OutputJson.createDir(absCloneDir);
-      OutputJson.createDir(absOutDir);
-
       let successCount = 0;
       for (const item of targets) {
         const targetHash = type === 'update' ? item.C_commitID : item.C_tagCommitID;
         if (!targetHash || targetHash === "no-subsequent-release") continue;
 
-        const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
+        let sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
+        if (!fs.existsSync(sourcePath)) {
+          const fallbackMaster = path.resolve(process.cwd(), '../clonedata/temp/master', libName, item.C_client);
+          if (fs.existsSync(fallbackMaster)) sourcePath = fallbackMaster;
+        }
+
         const destPath = path.resolve(absCloneDir, item.C_client);
 
         try {
           if (!fs.existsSync(sourcePath)) continue;
+          
+          if (!fs.existsSync(absCloneDir)) OutputJson.createDir(absCloneDir);
           
           fs.mkdirSync(path.dirname(destPath), { recursive: true });
           fs.cpSync(sourcePath, destPath, { recursive: true });
@@ -181,18 +172,25 @@ interface PartialExecutionStat {
 
       let detectedCount = 0;
       if (successCount > 0) {
-        console.log(`  [Detect] Executing detectByPattern for ${type} (Clients: ${successCount}, PatternMode: ${patternModeFlag})`);
-        
-        const detectResult = await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
-        detectedCount = detectResult.totalClients;
+        OutputJson.createDir(absOutDir);
+        await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
 
-        const outputFiles = fs.readdirSync(absOutDir).filter(f => f.endsWith('.json'));
-        for (const file of outputFiles) {
-          const oldPath = path.join(absOutDir, file);
-          const ext = path.extname(file);
-          const base = path.basename(file, ext);
-          const newPath = path.join(absOutDir, `${base}_${detectedCount}${ext}`);
-          fs.renameSync(oldPath, newPath);
+        // LOOK: リネーム処理を削除し、直接パースする形に修正
+        const detectJsonPath = path.join(absOutDir, `${type}_detect.json`);
+        if (fs.existsSync(detectJsonPath)) {
+          try {
+            const detectData = JSON.parse(fs.readFileSync(detectJsonPath, 'utf-8')) as ExtendedDetectionOutput;
+            if (Array.isArray(detectData.detectedClients)) {
+              const rbcSet = new Set(detectData.detectedClients);
+              let localDetectedCount = 0;
+              for (const item of targets) {
+                if (rbcSet.has(item.C_client)) {
+                  localDetectedCount++;
+                }
+              }
+              detectedCount = localDetectedCount;
+            }
+          } catch (e) {}
         }
       }
 
@@ -202,12 +200,11 @@ interface PartialExecutionStat {
         postVersion: postVersion,
         state: CONFIG.STATE,
         phase: type,
-        originalMatchedClients: rbcMatchedClients.length,
+        rbcTotalPatternCount: rbcTotalClientsCount,
         targetUpdatedClients: targets.length,
         postUpdateMatchedClients: detectedCount
       });
 
-      // ディスク容量節約のため、解析終了後の作業用ディレクトリを削除
       if (fs.existsSync(absCloneDir)) {
         fs.rmSync(absCloneDir, { recursive: true, force: true });
       }
@@ -225,20 +222,23 @@ interface PartialExecutionStat {
 
   if (executionStats.length > 0) {
     const safeDateStr = dateStr.replace(/[: ]/g, '_');
-    const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,OriginalMatchedClients,TargetUpdatedClients,PostUpdateMatchedClients\n';
+    const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,RBC_TotalPatternCount,TargetUpdatedClients,PostUpdateMatchedClients\n';
 
     const writeCsv = (stats: PartialExecutionStat[], type: string) => {
-      if (stats.length === 0) return;
+      const validStats = stats.filter(stat => stat.rbcTotalPatternCount > 0);
+      if (validStats.length === 0) return;
+
       const csvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `analysis_summary_${type}_${safeDateStr}.csv`);
-      const csvRows = stats.map(stat =>
-        `${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${stat.originalMatchedClients},${stat.targetUpdatedClients},${stat.postUpdateMatchedClients}`
+      const csvRows = validStats.map(stat =>
+        `${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${stat.rbcTotalPatternCount},${stat.targetUpdatedClients},${stat.postUpdateMatchedClients}`
       ).join('\n');
       fs.writeFileSync(csvPath, csvHeader + csvRows, 'utf8');
-      console.log(`\n[Done] Summary CSV (${type}) generated: ${csvPath}`);
+      
+      if (type === 'all') {
+        console.log(`\n[Done] Summary CSV generated: ${csvPath}`);
+      }
     };
 
     writeCsv(executionStats, 'all');
-  } else {
-    console.log("\n[Exit] No detection targets were processed.");
   }
 })();

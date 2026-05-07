@@ -22,7 +22,6 @@ export interface ExecutionStat {
   state: string;
   phase: string;
   rbcTotalPatternCount: number;
-  originalMatchedClients: number;
   targetUpdatedClients: number;
   activeAnalyzed: number;
   notFixed_PatternDetected: number;

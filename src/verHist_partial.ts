@@ -20,7 +20,6 @@ import { trackPostUpdate } from "./analysis/postUpdateTracker";
 
 type RunMode = 'extract' | 'analyze' | 'full';
 
-// CSV出力用の型定義
 interface TrackingSummary {
   libName: string;
   preVersion: string;
@@ -47,9 +46,6 @@ const CONFIG = {
   testResultPath: '../datasets/test_result.json'
 };
 
-/**
- * データの保存と解析（分類）を行う補助関数
- */
 async function saveAndAnalyzeData(libTask: any, state: string, dateStr: string, mode: RunMode, verHistory: any[] = []): Promise<TrackingSummary | null> {
   const { libName, preVersion, postVersion } = libTask;
   const outputDir = path.resolve(process.cwd(), `${CONFIG.outputBaseDir}/versionData/${dateStr}/${state}/${libName}-${postVersion}`);
@@ -168,10 +164,8 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
   console.log(`[Init] Loading datasets...`);
   const data: Item[] = await LoadJson.item(CONFIG.testResultPath);
 
-  // 型エラー対応：パース結果を明示的に配列としてキャスト
   const fileContent = fs.readFileSync(CONFIG.myDataPath, 'utf-8');
   const libVersionRanges = JSON.parse(fileContent) as { libName: string; preVersion: string; postVersion: string }[];
-  console.log(`[Init] Loaded ${libVersionRanges.length} tasks from mydata.json.`);
 
   const tasksByLib = new Map<string, any[]>();
   for (const task of libVersionRanges) {
@@ -195,7 +189,6 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
       const clientsSucc = [...new Set(list2Succ.filter(value => list1.includes(value)))];
       const clientsFail = [...new Set(list2Fail.filter(value => list1.includes(value)))];
 
-      // BC Loss Filter
       if (clientsFail.length === 0) {
         appendCloneLog([invalidCloneLogPath, invalidVerDataLogPath], task.libName, task.preVersion, task.postVersion, clientsSucc.length, clientsFail.length, 'EXCLUDED_NO_FAILURE_IN_DATASET');
         continue;
@@ -213,9 +206,21 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
     const rawMasterHistory = await ExtractVersion.extractVersion_master(allClients, libName);
 
     const masterHistory = rawMasterHistory.map(clientData => {
-      const repoPath = path.resolve(process.cwd(), `../clonedata/temp/master/${libName}/${clientData.C_client}`);
+      let repoPath = path.resolve(process.cwd(), `../clonedata/clientRepos/${libName}/${clientData.C_client}`);
+      let isFound = false;
+
+      if (fs.existsSync(repoPath)) {
+        isFound = true;
+      } else {
+        const fallbackPath = path.resolve(process.cwd(), `../clonedata/temp/master/${libName}/${clientData.C_client}`);
+        if (fs.existsSync(fallbackPath)) {
+          repoPath = fallbackPath;
+          isFound = true;
+        }
+      }
+
       const enrichedVerList = clientData.verList.map(v => {
-        const releases = getReleaseHistory(repoPath, libName, v.C_commitID);
+        const releases = isFound ? getReleaseHistory(repoPath, libName, v.C_commitID) : [];
         return { ...v, C_releases: releases };
       });
       return { ...clientData, verList: enrichedVerList };
@@ -236,7 +241,6 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
       const historySucc = masterHistory.filter(c => pairClients.succ.includes(c.C_client));
       const historyFail = masterHistory.filter(c => pairClients.fail.includes(c.C_client));
 
-      // Clone Fallback
       const succSummary = await saveAndAnalyzeData(task, 'success', dateStr, CONFIG.mode, historySucc);
       const failSummary = await saveAndAnalyzeData(task, 'failure', dateStr, CONFIG.mode, historyFail);
       
@@ -255,6 +259,5 @@ function appendCloneLog(logPaths: string[], libName: string, preVer: string, pos
     ).join('\n');
     
     fs.writeFileSync(trackingCsvPath, trackHeader + trackRows, 'utf8');
-    console.log(`\n[Done] Aggregate Tracking Summary CSV generated: ${trackingCsvPath}`);
   }
 })();

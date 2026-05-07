@@ -1,4 +1,3 @@
-// detect-full.ts
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
@@ -13,9 +12,6 @@ import GetMatchedClients from './utils/getMatchedClients';
 import { ExtractFunctionCallsResult, ExtendedDetectionOutput } from "./types/RbcTypes";
 import { TargetUpdate, ExecutionStat, ClientTrack, ExcludedClient } from "./types/AnalysisTypes";
 
-// ==========================================
-// INPUT: 実行設定
-// ==========================================
 const CONFIG = {
   CLONE_SUMMARY_CSV: '../output/v2/versionData/2026-04-26-01-52-52-all/valid_clone_summary.csv',
   VERSION_DATA_DIR: '../output/v2/versionData/2026-04-26-01-52-52-all',
@@ -26,9 +22,7 @@ const CONFIG = {
   
   RESULT_BASE_DIR: '../output/v2/specificData',
   STATES: ['success', 'failure'] as const,
-  MAX_RELEASES_TO_TRACK: 1,
-
-  DEBUG_MODE: false
+  MAX_RELEASES_TO_TRACK: 1
 };
 
 StatusBar.init();
@@ -54,14 +48,10 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 }
 
 (async () => {
-  console.log(`\n[DEBUG: 1] Script Started.`);
-  console.log(`[Init] Checking clone summary CSV: ${CONFIG.CLONE_SUMMARY_CSV}`);
-
   if (!fs.existsSync(CONFIG.CLONE_SUMMARY_CSV)) {
     const autoPath = path.join(CONFIG.VERSION_DATA_DIR, 'valid_clone_summary.csv');
     if (fs.existsSync(autoPath)) {
       CONFIG.CLONE_SUMMARY_CSV = autoPath;
-      console.log(`[DEBUG: 1.5] Auto-corrected CSV path to: ${autoPath}`);
     } else {
       console.error(`[Error] CSV file not found!`);
       StatusBar.finish();
@@ -88,20 +78,10 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
 
   let taskList = allTasks.filter(t => t.SuccessCloned > 0 || t.FailureCloned > 0);
 
-  if (CONFIG.DEBUG_MODE) {
-    taskList = taskList.filter(t => t.libName === "acorn");
-  }
-
   if (taskList.length === 0) {
-    console.log(`[Exit] No tasks to process.`);
     StatusBar.finish();
     return;
   }
-
-  console.log(`[DEBUG: 2] Loaded ${taskList.length} tasks from CSV.`);
-
-  // LOOK: ここにあった「全ファイルスキャン (GetAllFiles.getRecursively)」を削除しました。
-  // 代わりにループの中でピンポイントでディレクトリを探します。
 
   const dateStr = OutputJson.formatDateTime(new Date());
   const summaryOutDir = path.resolve(CONFIG.RESULT_BASE_DIR, dateStr, 'specific-commits');
@@ -112,8 +92,6 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
   const allExcludedClients: ExcludedClient[] = [];
   const totalSteps = taskList.length * CONFIG.STATES.length;
   let currentStep = 0;
-
-  console.log(`[DEBUG: 3] Entering Main Task Loop.`);
 
   for (const task of taskList) {
     const { libName, preVersion, postVersion } = task;
@@ -138,7 +116,7 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
             library: libName, preVersion, postVersion, state: targetState, phase: phaseName,
             rbcTotalPatternCount: 0,
             rbcPatternCountAll: rAll, rbcPatternCountSuccess: rSuc, rbcPatternCountFailure: rFail,
-            originalMatchedClients: 0, targetUpdatedClients: 0, activeAnalyzed: 0,
+            targetUpdatedClients: 0, activeAnalyzed: 0,
             notFixed_PatternDetected: 0, fixed_ImplementationChanged: 0,
             downgraded: 0, noRelease: 0, unknownError: 0
           });
@@ -146,41 +124,28 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
       };
 
       const clientCountInCsv = targetState === 'success' ? task.SuccessCloned : task.FailureCloned;
-      if (clientCountInCsv <= 0) {
-        recordEmptyStats();
-        continue;
-      }
+      if (clientCountInCsv <= 0) continue;
 
       const stateDataDir = path.join(CONFIG.VERSION_DATA_DIR, targetState, `${libName}-${postVersion}`);
-      if (!fs.existsSync(stateDataDir)) {
-        recordEmptyStats();
-        continue;
-      }
+      if (!fs.existsSync(stateDataDir)) continue;
 
       const historyFiles = fs.readdirSync(stateDataDir);
       const historyFileName = historyFiles.find(f => f.startsWith(`version_history-${targetState}`) && f.endsWith('.json'));
-      if (!historyFileName) {
-        recordEmptyStats();
-        continue;
-      }
+      if (!historyFileName) continue;
       const targetHistoryPath = path.join(stateDataDir, historyFileName);
 
-      // =========================================================================
-      // LOOK: フリーズ解消の肝。全件スキャンをやめ、対象のパスを直接指定して存在確認。
-      // =========================================================================
       const rbcTargetDir = path.resolve(CONFIG.RBC_DATA_ROOT, `${libName}_${verKey}`);
-      
-      if (!fs.existsSync(rbcTargetDir)) {
-        recordEmptyStats();
-        continue;
-      }
+      if (!fs.existsSync(rbcTargetDir)) continue;
 
-      // 対象ディレクトリの中だけスキャンするので一瞬で終わります。
       const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
 
       const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
       const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
       const patternFile = localRbcFiles.find(f => f.includes('detectpatternlist.json') || f.includes('patternList.json'));
+
+      if (!patternFile) continue;
+      const currentDetectFile = targetState === 'success' ? successDetectFile : failureDetectFile;
+      if (!currentDetectFile) continue;
 
       let rbcPatternCountSuccess = 0;
       let rbcPatternCountFailure = 0;
@@ -199,21 +164,15 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
       }
       const rbcPatternCountAll = rbcPatternCountSuccess + rbcPatternCountFailure;
 
-      const currentDetectFile = targetState === 'success' ? successDetectFile : failureDetectFile;
-      let rbcMatchedClients: string[] = [];
-      if (currentDetectFile) {
-        try {
-          const data = JSON.parse(fs.readFileSync(currentDetectFile, 'utf-8')) as ExtendedDetectionOutput;
-          if (Array.isArray(data.detectedClients)) {
-            rbcMatchedClients = data.detectedClients;
-          }
-        } catch (e) { }
-      }
+      if (rbcPatternCountAll === 0) continue;
 
-      if (!currentDetectFile || !patternFile) {
-        recordEmptyStats(rbcPatternCountAll, rbcPatternCountSuccess, rbcPatternCountFailure);
-        continue;
-      }
+      let rbcMatchedClients: string[] = [];
+      try {
+        const data = JSON.parse(fs.readFileSync(currentDetectFile, 'utf-8')) as ExtendedDetectionOutput;
+        if (Array.isArray(data.detectedClients)) {
+          rbcMatchedClients = data.detectedClients;
+        }
+      } catch (e) { }
 
       const filteredHistory = GetMatchedClients.filterByMode(targetHistoryPath, rbcMatchedClients);
       const rawTargets = targetCommits.get(filteredHistory, libName, postVersion);
@@ -289,9 +248,6 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
         const absOutDir = path.resolve(baseResultPath, phaseName);
         const relativeCloneDir = path.relative(process.cwd(), absCloneDir);
 
-        OutputJson.createDir(absCloneDir);
-        OutputJson.createDir(absOutDir);
-
         let activeAnalyzedCount = 0;
         let cloneSuccessCount = 0;
         let downgradeCount = 0;
@@ -311,9 +267,15 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           } else {
             const clientData = filteredHistory.find((c: any) => c.C_client === item.C_client);
             const ver = clientData?.verList?.find((v: any) => v.C_commitID === item.C_commitID);
-            const fallback = (ver?.C_tagCommitID && ver.C_tagCommitID !== 'no-subsequent-release')
-              ? [{ C_tagCommitID: ver.C_tagCommitID, L_libVersion: ver.L_libVersion || postVersion }] : [];
-            const releases = ver?.C_releases || fallback;
+            
+            // LOOK: リリース履歴の配列判定のバグを修正。空配列に上書きされないように厳密にフォールバックを適用
+            let releases: any[] = [];
+            if (ver?.C_releases && Array.isArray(ver.C_releases) && ver.C_releases.length > 0) {
+              releases = ver.C_releases;
+            } else if (ver?.C_tagCommitID && ver.C_tagCommitID !== 'no-subsequent-release') {
+              releases = [{ C_tagCommitID: ver.C_tagCommitID, L_libVersion: ver.L_libVersion || postVersion }];
+            }
+            
             const release = releases[phaseIndex];
 
             if (!release || !release.C_tagCommitID || release.C_tagCommitID === 'no-subsequent-release') {
@@ -351,46 +313,58 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           }
 
           activeAnalyzedCount++;
-          // 修正箇所: clientRepos 直下の libName/clientName を参照するように構造をフラット化
-          const sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
+          
+          let sourcePath = path.resolve(CONFIG.SOURCE_CLIENT_REPOS, libName, item.C_client);
+          
+          if (!fs.existsSync(sourcePath)) {
+            const fallbackMaster = path.resolve(process.cwd(), '../clonedata/temp/master', libName, item.C_client);
+            const fallbackOldAll = path.resolve(process.cwd(), '../clonedata/repos/clientRepos_all', libName, verKey, targetState, item.C_client);
+            
+            if (fs.existsSync(fallbackMaster)) {
+              sourcePath = fallbackMaster;
+            } else if (fs.existsSync(fallbackOldAll)) {
+              sourcePath = fallbackOldAll;
+            }
+          }
+
           const destPath = path.resolve(absCloneDir, item.C_client);
 
           try {
-            if (!fs.existsSync(sourcePath)) {
-               // ログ出力: 見つからない場合にどこのパスを探したかを表示
-               continue;
-            }
+            if (!fs.existsSync(sourcePath)) continue;
+
+            if (!fs.existsSync(absCloneDir)) OutputJson.createDir(absCloneDir);
+            
             fs.mkdirSync(path.dirname(destPath), { recursive: true });
             fs.cpSync(sourcePath, destPath, { recursive: true });
             execSync(`git -C "${destPath}" checkout -f ${targetHash}`, { stdio: 'ignore' });
             cloneSuccessCount++;
-          } catch (err) { }
+          } catch (err) {}
         }
 
         let detectedClientsCount = 0;
         const detectedClients = new Set<string>();
 
+        // LOOK: 対象がいて解析が実行される時だけ出力フォルダを作成する
         if (cloneSuccessCount > 0) {
-
+          OutputJson.createDir(absOutDir);
           await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
 
-          const outputFiles = fs.readdirSync(absOutDir).filter(f => f.endsWith('.json'));
-          for (const file of outputFiles) {
-            const content = fs.readFileSync(path.join(absOutDir, file), 'utf-8');
-            for (const item of targets) {
-              if (content.includes(`"${item.C_client}"`) || content.includes(item.C_client)) {
-                detectedClients.add(item.C_client);
+          // LOOK: リネーム処理を完全削除し、そのままのファイル名(xxx_detect.json)からパースして照合
+          const detectJsonPath = path.join(absOutDir, `${phaseName}_detect.json`);
+          if (fs.existsSync(detectJsonPath)) {
+            try {
+              const detectData = JSON.parse(fs.readFileSync(detectJsonPath, 'utf-8')) as ExtendedDetectionOutput;
+              if (Array.isArray(detectData.detectedClients)) {
+                const rbcSet = new Set(detectData.detectedClients);
+                for (const item of targets) {
+                  if (rbcSet.has(item.C_client)) {
+                    detectedClients.add(item.C_client);
+                  }
+                }
               }
-            }
+            } catch (e) {}
           }
-
           detectedClientsCount = detectedClients.size;
-
-          for (const file of outputFiles) {
-            const ext = path.extname(file);
-            const base = path.basename(file, ext);
-            fs.renameSync(path.join(absOutDir, file), path.join(absOutDir, `${base}_${detectedClientsCount}${ext}`));
-          }
         }
 
         for (const item of targets) {
@@ -426,7 +400,6 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           rbcPatternCountAll,
           rbcPatternCountSuccess,
           rbcPatternCountFailure,
-          originalMatchedClients: targets.length,
           targetUpdatedClients: targets.length,
           activeAnalyzed: activeAnalyzedCount,
           notFixed_PatternDetected: detectedClientsCount,
@@ -434,11 +407,9 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
           downgraded: downgradeCount, noRelease: noReleaseCount, unknownError: unknownErrorCount
         });
 
-        // 即時削除
         if (fs.existsSync(absCloneDir)) {
           fs.rmSync(absCloneDir, { recursive: true, force: true });
         }
-        console.log(`[DEBUG]   -> Phase: ${phaseName} finished.`);
       };
 
       await runAnalysis('update', -1);
@@ -462,19 +433,31 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
     const safeDateStr = dateStr.replace(/[: ]/g, '_');
 
     if (executionStats.length > 0) {
-      const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,RBC_TotalPatternCount,OriginalMatchedClients,TargetUpdatedClients,ActiveAnalyzed,NotFixed_PatternDetected,Fixed_ImplementationChanged,Downgraded,NoRelease,UnknownError\n';
+      const csvHeader = 'Library,PreVersion,PostVersion,State,Phase,RBC_TotalPatternCount,TargetUpdatedClients,ActiveAnalyzed,NotFixed_PatternDetected,Fixed_ImplementationChanged,Downgraded,NoRelease,UnknownError\n';
 
       const writeCsv = (stats: ExtendedExecutionStat[], type: 'all' | 'success' | 'failure') => {
-        if (stats.length === 0) return;
+        const validStats = stats.filter(stat => {
+          let targetRbcCount = stat.rbcPatternCountAll;
+          if (type === 'success') targetRbcCount = stat.rbcPatternCountSuccess;
+          else if (type === 'failure') targetRbcCount = stat.rbcPatternCountFailure;
+          return targetRbcCount > 0;
+        });
+
+        if (validStats.length === 0) return;
+
         const csvPath = path.join(CONFIG.RESULT_BASE_DIR, dateStr, `analysis_summary_${type}_${safeDateStr}.csv`);
-        const csvRows = stats.map(stat => {
+        const csvRows = validStats.map(stat => {
           let targetRbcCount = stat.rbcPatternCountAll;
           if (type === 'success') targetRbcCount = stat.rbcPatternCountSuccess;
           else if (type === 'failure') targetRbcCount = stat.rbcPatternCountFailure;
 
-          return `${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${targetRbcCount},${stat.originalMatchedClients},${stat.targetUpdatedClients},${stat.activeAnalyzed},${stat.notFixed_PatternDetected},${stat.fixed_ImplementationChanged},${stat.downgraded},${stat.noRelease},${stat.unknownError}`;
+          return `${stat.library},${stat.preVersion},${stat.postVersion},${stat.state},${stat.phase},${targetRbcCount},${stat.targetUpdatedClients},${stat.activeAnalyzed},${stat.notFixed_PatternDetected},${stat.fixed_ImplementationChanged},${stat.downgraded},${stat.noRelease},${stat.unknownError}`;
         }).join('\n');
         fs.writeFileSync(csvPath, csvHeader + csvRows, 'utf8');
+
+        if (type === 'all') {
+          console.log(`\n[Done] Summary CSV generated: ${csvPath}`);
+        }
       };
 
       writeCsv(executionStats, 'all');
@@ -503,5 +486,4 @@ function isDowngraded(currentVer: string, targetVer: string): boolean {
     }
 
   }
-  console.log(`\n[DEBUG] Script completed entirely.`);
 })();

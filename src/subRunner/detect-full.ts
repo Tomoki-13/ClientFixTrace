@@ -5,7 +5,7 @@ import { detectByPattern } from "../../R-BC/src/core/detectByPattern";
 import { ExtractFunctionCallsResult } from "../../R-BC/src/types/ExtractFunctionCallsResult";
 
 import StatusBar from "../utils/statusBar";
-import TargetCommits from "../utils/targetCommits";
+import TargetCommits from "../analysis/targetCommits";
 import OutputJson from "../utils/output_json";
 import GetAllFiles from "../utils/getAllFiles";
 import GetMatchedClients from '../utils/getMatchedClients';
@@ -165,7 +165,7 @@ interface ExecutionStat {
 
       // 後続調査用にターゲット一覧を出力
       const commitLogPath = path.resolve(summaryOutDir, `${libName}-${postVersion}_${targetState}_list.json`);
-      const exportTargets = targets.map(t => ({
+      const exportTargets = targets.map((t: any) => ({
         client: t.C_client,
         libVersion: t.L_postLibVersion,
         commitID: t.C_commitID,
