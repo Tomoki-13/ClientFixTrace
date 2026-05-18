@@ -1,4 +1,4 @@
-import GetTargetCommits from '../utils/targetCommits';
+import TargetCommits from '../analysis/targetCommits';
 import { Client_Ver } from '../types/VersionCommits';
 
 describe('get_target_commits.ts test', () => {
@@ -15,7 +15,7 @@ describe('get_target_commits.ts test', () => {
     ];
 
     // ターゲットバージョンを '2.0.0' に指定
-    const result = GetTargetCommits.get(mockData, 'test-lib', '2.0.0');
+    const result = TargetCommits.get(mockData, 'test-lib', '2.0.0');
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -40,7 +40,7 @@ describe('get_target_commits.ts test', () => {
     ];
 
     // クライアントは1.0.0までしか持っていないのに、4.0.0を探す
-    const result = GetTargetCommits.get(mockData, 'test-lib', '4.0.0');
+    const result = TargetCommits.get(mockData, 'test-lib', '4.0.0');
     expect(result).toHaveLength(0);
   });
 });

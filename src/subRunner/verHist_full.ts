@@ -9,8 +9,8 @@ import extractVersion from "../core/extractVersion";
 import createVersionPairs from "../core/create_version_pairs";
 import outputJson from "../utils/output_json";
 import dataProcessor from "../utils/dataProcessor";
-import targetCommits from "../utils/targetCommits"; // ターゲット抽出用
-import versionUtil from "../utils/versionUtil";     // バージョン正規化用
+import targetCommits from "../analysis/targetCommits";
+import versionUtil from "../analysis/versionUtil";
 
 type RunMode = 'extract' | 'analyze' | 'full';
 
