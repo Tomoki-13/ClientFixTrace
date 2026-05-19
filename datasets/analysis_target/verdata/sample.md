@@ -1,0 +1,1 @@
+ここにoutput/allverHist/versionDataに格納される「year-month-day」形式のフォルダを配置してパスとvalid_clone_summary.csvのファイルパスをdetect.tsに記載

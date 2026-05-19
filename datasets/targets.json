@@ -1,0 +1,10 @@
+[
+  { "libName": "uuid", "preVersion": "7.0.3", "postVersion": "8.0.0-beta.0" },
+  { "libName": "uuid", "preVersion": "3.4.0", "postVersion": "7.0.0-beta.0" },
+  { "libName": "globby", "preVersion": "8.0.0", "postVersion": "8.0.1" },
+  { "libName": "meow", "preVersion": "3.6.0", "postVersion": "4.0.0" },
+  { "libName": "globby", "preVersion": "6.1.0", "postVersion": "7.0.0" },
+  { "libName": "pump", "preVersion": "1.0.3", "postVersion": "2.0.0" },
+  { "libName": "globby", "preVersion": "7.1.1", "postVersion": "8.0.0" },
+  { "libName": "vinyl", "preVersion": "1.2.0", "postVersion": "2.0.0" }
+]
