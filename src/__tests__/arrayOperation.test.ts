@@ -1,4 +1,4 @@
-import CompareVersion from '../utils/compareVersion';
+import CompareVersion from '../analysis/compareVersion';
 
 describe('cleanVersion', () => {
     test('should clean standard version strings', () => {

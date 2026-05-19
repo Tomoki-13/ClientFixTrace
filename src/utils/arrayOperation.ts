@@ -16,7 +16,7 @@ function removeDuplicateTwo(strArray: string[][]): string[][] {
 function extractVersionList(data: Client_Ver[]): string[][] {
   return data.map((element) => {
     if (element.verList && element.verList.length > 1) {
-      return element.verList.map((ver: any) => ver.L_libVersion || ver.libVersion);
+      return element.verList.map((ver: any) => ver.L_libVersion || ver.libVersion || ver.version);
     }
     return [];
   });

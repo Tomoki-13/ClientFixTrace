@@ -21,20 +21,6 @@ describe('getMatchedClients', () => {
         expect(Output).toEqual(expectedOutput);
     });
 
-    describe('isVersionGreaterOrEqual', () => {
-        test.each([
-            ['1.10.0', '1.2.0', true],
-            ['2.0', '1.9.9', true],
-            ['1.2.3', '1.2.3', true],
-            ['1.2', '1.2.0', true],
-            ['1.2.0', '1.2.1', false],
-            ['1.1.9', '1.2.0', false],
-        ])('ver >= base', (ver, base, expected) => {
-            const output = GetMatchedClients.isVersionGreaterOrEqual(ver, base);
-            expect(output).toBe(expected);
-        });
-    });
-
     describe('extractClients', () => {
         it('should extract client list', () => {
             // Arrange

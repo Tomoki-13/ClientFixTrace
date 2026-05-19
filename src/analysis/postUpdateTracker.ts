@@ -1,5 +1,3 @@
-// analysis/postUpdateTracker.ts
-
 // バージョンの大小を比較する補助関数
 export function compareVer(v1: string, v2: string): 'greater' | 'less' | 'equal' | 'invalid' {
   if (!v1 || !v2 || v1 === "not_found" || v2 === "not_found" || v1 === "unknown" || v2 === "unknown") return 'invalid';

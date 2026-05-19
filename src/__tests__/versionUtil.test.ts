@@ -1,5 +1,3 @@
-// src/analysis/__tests__/versionUtil.test.ts
-
 import VersionUtil from "../analysis/versionUtil";
 
 describe("VersionUtil", () => {
@@ -71,6 +69,19 @@ describe("VersionUtil", () => {
       const versions = ["1.10.0", "1.2.0", "1.2.0", "2.0.0", "1.0.1"];
       const expected = ["1.0.1", "1.2.0", "1.10.0", "2.0.0"];
       expect(VersionUtil.sort(versions)).toEqual(expected);
+    });
+  });
+
+  describe("isGreaterOrEqual()", () => {
+    test.each([
+      ["1.10.0", "1.2.0",  true],
+      ["2.0.0",  "1.9.9",  true],
+      ["1.2.3",  "1.2.3",  true],  // 完全一致は true
+      ["1.2",    "1.2.0",  true],
+      ["1.2.0",  "1.2.1",  false],
+      ["1.1.9",  "1.2.0",  false],
+    ])("isGreaterOrEqual(%s, %s) === %s", (ver, base, expected) => {
+      expect(VersionUtil.isGreaterOrEqual(ver, base)).toBe(expected);
     });
   });
 });
