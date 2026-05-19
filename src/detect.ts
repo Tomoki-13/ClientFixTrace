@@ -25,20 +25,30 @@ const CONFIG = {
    */
   DEFAULT_MODE: 'full' as 'full' | 'partial',
 
+  /**
+   * パターン検出モード (CLI第2引数 or ここを書き換えて固定)
+   *   0: コードのみ (detectpatternlist.json / 型情報なし・広域マッチ)
+   *   1: コード + 型完全一致 (patternList.json)
+   *   2: コード + 型一致 + object キー部分一致 (patternList.json)
+   */
+  DEFAULT_DETECT_MODE: 0 as 0 | 1 | 2,
+
   // ===== Full モード設定 =====
   FULL: {
     // 抽出フェーズで出力された valid_clone_summary.csv のパス
     CLONE_SUMMARY_CSV: '../output/v2/versionData/2026-04-26-01-52-52-all/valid_clone_summary.csv',
     // 各ライブラリの version_history.json が格納されているルートディレクトリ
-    VERSION_DATA_DIR: '../output/v2/versionData/2026-04-26-01-52-52-all',
-    // R-BC による事前解析結果の格納先
-    RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-04-14-11-23-05-all',
+    VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-05-18-15-14-29',
+    // R-BC 解析結果ルート (mode 0/1/2 それぞれの日付フォルダを指定)
+    RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
+    RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
+    RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
     // クライアントリポジトリの永続キャッシュ
     SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
     BASE_CLONE_DIR: '../clonedata/analysis_temp_repos',
     // 最終サマリーCSV・詳細JSONの出力先
-    RESULT_BASE_DIR: '../output/specificData',
+    RESULT_BASE_DIR: '../output/detect',
     // 対象ステート (success / failure の両方を処理)
     STATES: ['success', 'failure'] as const,
     // update の後に追跡する後続リリース数 (0〜3)
@@ -50,15 +60,17 @@ const CONFIG = {
     // 処理対象タスク一覧 (必須)
     TASK_LIST_PATH: '../datasets/targets.json',
     // verHist の出力ルート (full / partial どちらの出力でも可)
-    VERSION_DATA_DIR: '../output/v2/versionData/2026-04-26-01-52-52-all',
-    // R-BC による事前解析結果の格納先
-    RBC_DATA_ROOT: '../datasets/analysis_target/rbc_data/2026-04-14-11-23-05-all',
+    VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-05-18-15-14-29',
+    // R-BC 解析結果ルート (mode 0/1/2 それぞれの日付フォルダを指定)
+    RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
+    RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
+    RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
     // クライアントリポジトリの永続キャッシュ
     SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
     BASE_CLONE_DIR: '../clonedata/analysis_temp_repos',
     // 最終サマリーCSV・詳細JSONの出力先
-    RESULT_BASE_DIR: '../output/specificData',
+    RESULT_BASE_DIR: '../output/detect',
     // 対象ステート (success / failure の両方を処理。ファイルがなければスキップ)
     STATES: ['success', 'failure'] as const,
     // update の後に追跡する後続リリース数 (0〜3)
@@ -70,6 +82,11 @@ const CONFIG = {
 const MODE = (['full', 'partial'].includes(process.argv[2])
   ? process.argv[2]
   : CONFIG.DEFAULT_MODE) as 'full' | 'partial';
+
+// CLI第2引数 (0/1/2) or CONFIG.DEFAULT_DETECT_MODE で検出モードを決定
+const DETECT_MODE = ([0, 1, 2].includes(Number(process.argv[3]))
+  ? Number(process.argv[3])
+  : CONFIG.DEFAULT_DETECT_MODE) as 0 | 1 | 2;
 
 StatusBar.init();
 
@@ -106,14 +123,29 @@ function checkoutToDir(sourcePath: string, destPath: string, commitHash: string)
 }
 
 /**
- * パターンJSONファイルを解析エンジン用の3階層構造に変換する。
- * detectpatternlist.json → modeFlag=0 / patternList.json → modeFlag=1
+ * 検出モードに応じたパターンファイルを選択し、3階層構造に変換して返す。
+ *   mode 0 → detectpatternlist.json (型なし広域マッチ)
+ *   mode 1/2 → patternList.json (型情報あり)
+ * 対応ファイルが見つからない場合は null を返す。
  */
-function loadPatterns(patternFile: string): {
-  patterns: ExtractFunctionCallsResult[][][];
-  modeFlag: number;
-} {
-  const modeFlag = patternFile.includes('detectpatternlist.json') ? 0 : 1;
+function loadPatterns(
+  rbcFiles: string[],
+  detectMode: 0 | 1 | 2
+): { patterns: ExtractFunctionCallsResult[][][] } | null {
+  let patternFile: string | undefined;
+  if (detectMode === 0) {
+    // mode 0: 型なしファイル優先、なければ型ありにフォールバック
+    patternFile =
+      rbcFiles.find(f => f.includes('detectpatternlist.json')) ??
+      rbcFiles.find(f => f.includes('patternList.json'));
+  } else {
+    // mode 1/2: 型情報必須のため patternList.json のみ使用
+    patternFile = rbcFiles.find(f =>
+      f.includes('patternList.json') && !f.includes('detectpatternlist.json')
+    );
+  }
+  if (!patternFile) return null;
+
   const raw = JSON.parse(fs.readFileSync(patternFile, 'utf-8')) as any;
   const rawPatterns: any[] = raw?.patterns
     ? raw.patterns.map((p: any) => p.pattern)
@@ -121,7 +153,7 @@ function loadPatterns(patternFile: string): {
   const patterns: ExtractFunctionCallsResult[][][] = rawPatterns.map((p: any[]) =>
     p.map((bg: any[]) => bg.flatMap(b => Array.isArray(b) ? b : [b]))
   );
-  return { patterns, modeFlag };
+  return { patterns };
 }
 
 // ==========================================
@@ -136,6 +168,14 @@ interface ExtendedExecutionStat extends ExecutionStat {
 
 async function runFullMode(): Promise<void> {
   const C = CONFIG.FULL;
+
+  // DETECT_MODE に対応する RBC ルートを解決
+  const rbcRoot = [C.RBC_M0, C.RBC_M1, C.RBC_M2][DETECT_MODE];
+  if (!rbcRoot) {
+    console.error(`[Error] CONFIG.FULL.RBC_M${DETECT_MODE} が未設定です。detect.ts の CONFIG を確認してください。`);
+    StatusBar.finish();
+    return;
+  }
 
   // CSV ファイルのパス解決
   let cloneSummaryPath = C.CLONE_SUMMARY_CSV;
@@ -152,7 +192,7 @@ async function runFullMode(): Promise<void> {
     .filter(t => t.SuccessCloned > 0 || t.FailureCloned > 0);
   if (taskList.length === 0) { StatusBar.finish(); return; }
 
-  const dateStr = OutputJson.formatDateTime(new Date());
+  const dateStr = OutputJson.formatDateTime(new Date()) + '-all';
   const summaryOutDir = path.resolve(C.RESULT_BASE_DIR, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
@@ -206,16 +246,14 @@ async function runFullMode(): Promise<void> {
       const targetHistoryPath = path.join(stateDataDir, historyFileName);
 
       // RBC ファイルの特定
-      const rbcTargetDir = path.resolve(C.RBC_DATA_ROOT, `${libName}_${verKey}`);
+      const rbcTargetDir = path.resolve(rbcRoot, `${libName}_${verKey}`);
       if (!fs.existsSync(rbcTargetDir)) continue;
 
       const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
       const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
       const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
-      const patternFile = localRbcFiles.find(f =>
-        f.includes('detectpatternlist.json') || f.includes('patternList.json')
-      );
-      if (!patternFile) continue;
+      const loadedPatterns = loadPatterns(localRbcFiles, DETECT_MODE);
+      if (!loadedPatterns) continue;
 
       const currentDetectFile = targetState === 'success' ? successDetectFile : failureDetectFile;
       if (!currentDetectFile) continue;
@@ -278,7 +316,7 @@ async function runFullMode(): Promise<void> {
         })), null, 2
       ));
 
-      const { patterns, modeFlag: patternModeFlag } = loadPatterns(patternFile);
+      const { patterns } = loadedPatterns;
       const baseFolderName = `${libName}-${postVersion}_${targetState}`;
       const baseClonePath = path.resolve(C.BASE_CLONE_DIR, baseFolderName);
       const baseResultPath = path.resolve(C.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
@@ -386,7 +424,7 @@ async function runFullMode(): Promise<void> {
         const detectedClients = new Set<string>();
         if (cloneSuccessCount > 0) {
           OutputJson.createDir(absOutDir);
-          await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
+          await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, DETECT_MODE);
 
           const detectJsonPath = path.join(absOutDir, `${phaseName}_detect.json`);
           if (fs.existsSync(detectJsonPath)) {
@@ -462,6 +500,14 @@ async function runFullMode(): Promise<void> {
 async function runPartialMode(): Promise<void> {
   const C = CONFIG.PARTIAL;
 
+  // DETECT_MODE に対応する RBC ルートを解決
+  const rbcRoot = [C.RBC_M0, C.RBC_M1, C.RBC_M2][DETECT_MODE];
+  if (!rbcRoot) {
+    console.error(`[Error] CONFIG.PARTIAL.RBC_M${DETECT_MODE} が未設定です。detect.ts の CONFIG を確認してください。`);
+    StatusBar.finish();
+    return;
+  }
+
   if (!fs.existsSync(C.TASK_LIST_PATH)) {
     console.error(`[Error] ${C.TASK_LIST_PATH} は Partial モードで必須です。`);
     StatusBar.finish();
@@ -473,7 +519,7 @@ async function runPartialMode(): Promise<void> {
   }[];
   if (rawTaskList.length === 0) { StatusBar.finish(); return; }
 
-  const dateStr = OutputJson.formatDateTime(new Date());
+  const dateStr = OutputJson.formatDateTime(new Date()) + '-partial';
   const summaryOutDir = path.resolve(C.RESULT_BASE_DIR, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
@@ -524,16 +570,14 @@ async function runPartialMode(): Promise<void> {
       const targetHistoryPath = path.join(stateDataDir, historyFileName);
 
       // RBC ファイルの特定
-      const rbcTargetDir = path.resolve(C.RBC_DATA_ROOT, `${libName}_${verKey}`);
+      const rbcTargetDir = path.resolve(rbcRoot, `${libName}_${verKey}`);
       if (!fs.existsSync(rbcTargetDir)) continue;
 
       const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
       const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
       const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
-      const patternFile = localRbcFiles.find(f =>
-        f.includes('detectpatternlist.json') || f.includes('patternList.json')
-      );
-      if (!patternFile) continue;
+      const loadedPatterns = loadPatterns(localRbcFiles, DETECT_MODE);
+      if (!loadedPatterns) continue;
 
       const currentDetectFile = targetState === 'success' ? successDetectFile : failureDetectFile;
       if (!currentDetectFile) continue; // failure の detect ファイルがなければスキップ
@@ -592,7 +636,7 @@ async function runPartialMode(): Promise<void> {
         })), null, 2
       ));
 
-      const { patterns, modeFlag: patternModeFlag } = loadPatterns(patternFile);
+      const { patterns } = loadedPatterns;
       const baseFolderName = `${libName}-${postVersion}_${targetState}`;
       const baseClonePath = path.resolve(C.BASE_CLONE_DIR, baseFolderName);
       const baseResultPath = path.resolve(C.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
@@ -688,7 +732,7 @@ async function runPartialMode(): Promise<void> {
         const detectedClients = new Set<string>();
         if (cloneSuccessCount > 0) {
           OutputJson.createDir(absOutDir);
-          await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, patternModeFlag);
+          await detectByPattern(relativeCloneDir, libName, patterns, absOutDir, true, DETECT_MODE);
 
           const detectJsonPath = path.join(absOutDir, `${phaseName}_detect.json`);
           if (fs.existsSync(detectJsonPath)) {
@@ -755,12 +799,9 @@ async function runPartialMode(): Promise<void> {
   CsvHandler.writeExcludedClients(allExcludedClients, C.RESULT_BASE_DIR, dateStr);
 }
 
-// ==========================================
-// エントリーポイント
-// ==========================================
 (async () => {
   console.log(`\n==================================================`);
-  console.log(`[Mode] ${MODE.toUpperCase()}`);
+  console.log(`[Mode] ${MODE.toUpperCase()}  [DetectMode] ${DETECT_MODE}`);
   console.log(`==================================================`);
 
   if (MODE === 'full') {

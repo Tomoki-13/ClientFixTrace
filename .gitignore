@@ -1,7 +1,5 @@
-datasets
 node_modules
 .DS_Store
-scripts
 preDev
 package-lock.json
 clientRepos
@@ -13,3 +11,11 @@ output
 src/visualization
 R-BC
 clonedata
+src/**/*.md
+docs.md
+datasets/mydata
+DATA_SPEC.md
+datasets/analysis_target/rbc_data/**
+datasets/analysis_target/verdata/**
+datasets/analysis_target/storage/**
+datasets/test_result.json

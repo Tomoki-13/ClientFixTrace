@@ -1,12 +1,3 @@
-// src/verHist.ts
-// 統合版 バージョン履歴抽出・解析スクリプト
-// ================================================
-// 実行方法:
-//   ts-node verHist.ts full     → Full モード (全件 or mydata.json指定)
-//   ts-node verHist.ts partial  → Partial モード (mydata.json 必須)
-//   (引数省略時は DEFAULT_MODE を使用)
-// ================================================
-
 import fs from "fs";
 import path from "path";
 import { Item } from "./types/Item";
@@ -19,6 +10,7 @@ import OutputJson from "./utils/output_json";
 import dataProcessor from "./utils/dataProcessor";
 import TargetCommits from "./analysis/targetCommits";
 import VersionUtil from "./analysis/versionUtil";
+import WorkspaceManager from "./utils/workspaceManager";
 import { getReleaseHistory } from "./git/getReleaseHistory";
 import { trackPostUpdate } from "./analysis/postUpdateTracker";
 
@@ -48,7 +40,7 @@ const CONFIG = {
   FULL: {
     /** 空文字の場合は test_result.json から全件自動抽出 */
     myDataPath: '',
-    outputBaseDir: '../output/allverHist',
+    outputBaseDir: '../output/verHist',
     /** 特定ライブラリのみに絞る場合に指定 (空文字=全件) */
     targetLibrary: '',
     runMode: 'full' as InternalRunMode,
@@ -79,7 +71,7 @@ const CONFIG = {
      * Full モードの出力と同じルートを指定すれば detect.ts PARTIAL.VERSION_DATA_DIR と共有できる。
      * 分けたい場合は '../output/partVerHist' などに変更する。
      */
-    outputBaseDir: '../output/verHist_partial',
+    outputBaseDir: '../output/verHist',
     runMode: 'full' as InternalRunMode,
   }
 };
@@ -207,19 +199,6 @@ async function saveAndAnalyzeData(
   return null;
 }
 
-/**
- * リポジトリパスを解決する (clientRepos → temp/master の順でフォールバック)。
- */
-function resolveRepoPath(libName: string, clientName: string): { repoPath: string; isFound: boolean } {
-  const primary = path.resolve(process.cwd(), `../clonedata/clientRepos/${libName}/${clientName}`);
-  if (fs.existsSync(primary)) return { repoPath: primary, isFound: true };
-
-  const fallback = path.resolve(process.cwd(), `../clonedata/temp/master/${libName}/${clientName}`);
-  if (fs.existsSync(fallback)) return { repoPath: fallback, isFound: true };
-
-  return { repoPath: primary, isFound: false };
-}
-
 // ==========================================
 // Full モード
 // ==========================================
@@ -245,7 +224,7 @@ async function runFullMode(): Promise<void> {
     return;
   }
 
-  dateStr += suffix;
+  dateStr += '-all' + suffix;
 
   const cloneResultDir  = path.resolve(process.cwd(), `${outputBaseDir}/cloneResult/${dateStr}`);
   const versionDataRoot = path.resolve(process.cwd(), `${outputBaseDir}/versionData/${dateStr}`);
@@ -337,10 +316,10 @@ async function runFullMode(): Promise<void> {
 
     // リリース履歴を付加 (フォールバックあり)
     const masterHistory = rawMasterHistory.map(clientData => {
-      const { repoPath, isFound } = resolveRepoPath(libName, clientData.C_client);
+      const repoPath = WorkspaceManager.resolveSourcePath('../clonedata/clientRepos', libName, clientData.C_client);
       const enrichedVerList = clientData.verList.map((v: any) => ({
         ...v,
-        C_releases: isFound ? getReleaseHistory(repoPath, libName, v.C_commitID) : []
+        C_releases: repoPath ? getReleaseHistory(repoPath, libName, v.C_commitID) : []
       }));
       return { ...clientData, verList: enrichedVerList };
     });
@@ -406,7 +385,7 @@ async function runPartialMode(): Promise<void> {
     process.exit(1);
   }
 
-  const dateStr = OutputJson.formatDateTime(new Date());
+  const dateStr = OutputJson.formatDateTime(new Date()) + '-partial';
 
   console.log(`\n==================================================`);
   console.log(`[Mode] PARTIAL`);
@@ -483,10 +462,10 @@ async function runPartialMode(): Promise<void> {
 
     // リリース履歴を付加 (フォールバックあり)
     const masterHistory = rawMasterHistory.map(clientData => {
-      const { repoPath, isFound } = resolveRepoPath(libName, clientData.C_client);
+      const repoPath = WorkspaceManager.resolveSourcePath('../clonedata/clientRepos', libName, clientData.C_client);
       const enrichedVerList = clientData.verList.map((v: any) => ({
         ...v,
-        C_releases: isFound ? getReleaseHistory(repoPath, libName, v.C_commitID) : []
+        C_releases: repoPath ? getReleaseHistory(repoPath, libName, v.C_commitID) : []
       }));
       return { ...clientData, verList: enrichedVerList };
     });
