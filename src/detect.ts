@@ -92,8 +92,12 @@ const MODE = (['full', 'partial'].includes(process.argv[2])
   : CONFIG.DEFAULT_MODE) as 'full' | 'partial';
 
 // CLI第2引数 (0/1/2) or CONFIG.DEFAULT_DETECT_MODE で検出モードを決定
-const DETECT_MODE = ([0, 1, 2].includes(Number(process.argv[3]))
-  ? Number(process.argv[3])
+const _rawDetectMode = process.argv[3];
+if (_rawDetectMode !== undefined && ![0, 1, 2].includes(Number(_rawDetectMode))) {
+  console.warn(`[Warn] DETECT_MODE="${_rawDetectMode}" は無効です (有効値: 0/1/2)。DEFAULT_DETECT_MODE=${CONFIG.DEFAULT_DETECT_MODE} を使用します。`);
+}
+const DETECT_MODE = ([0, 1, 2].includes(Number(_rawDetectMode))
+  ? Number(_rawDetectMode)
   : CONFIG.DEFAULT_DETECT_MODE) as 0 | 1 | 2;
 
 StatusBar.init();
@@ -339,7 +343,7 @@ async function runFullMode(): Promise<void> {
       OutputJson.createDir(baseClonePath);
 
       // クライアントごとの状態管理マップ
-      const clientStatus = new Map<string, 'active' | 'downgraded' | 'no_release' | 'unknown_error'>();
+      const clientStatus = new Map<string, 'active' | 'fixed' | 'downgraded' | 'no_release' | 'unknown_error'>();
       const clientTracks = new Map<string, ClientTrack>();
       targets.forEach((t: any) => {
         clientStatus.set(t.C_client, 'active');
@@ -419,6 +423,7 @@ async function runFullMode(): Promise<void> {
           if (phaseName === 'release_3') track.R3_LibVer     = currentLibVer || '-';
 
           if (currentStatus !== 'active') {
+            // 'fixed' は前フェーズで修正済み → カウントせずスキップ
             if (currentStatus === 'downgraded')    downgradeCount++;
             if (currentStatus === 'no_release')    noReleaseCount++;
             if (currentStatus === 'unknown_error') unknownErrorCount++;
@@ -463,13 +468,17 @@ async function runFullMode(): Promise<void> {
           if      (st === 'downgraded')    statusStr = 'Downgraded (Rolled Back)';
           else if (st === 'no_release')    statusStr = 'No Release';
           else if (st === 'unknown_error') statusStr = 'Unknown Error';
+          else if (st === 'fixed')         statusStr = 'Fixed (Impl Changed)';
           else if (st === 'active') {
             const destPath = path.resolve(absCloneDir, item.C_client);
-            statusStr = !fs.existsSync(destPath)
-              ? 'Clone Failed'
-              : detectedClients.has(item.C_client)
-                ? 'Not Fixed (Pattern Detected)'
-                : 'Fixed (Impl Changed)';
+            if (!fs.existsSync(destPath)) {
+              statusStr = 'Clone Failed';
+            } else if (detectedClients.has(item.C_client)) {
+              statusStr = 'Not Fixed (Pattern Detected)';
+            } else {
+              statusStr = 'Fixed (Impl Changed)';
+              clientStatus.set(item.C_client, 'fixed'); // 後続フェーズで再カウントしない
+            }
           }
           if (phaseName === 'update')   track.Update_Status = statusStr;
           if (phaseName === 'release_1') track.R1_Status     = statusStr;
@@ -664,7 +673,7 @@ async function runPartialMode(): Promise<void> {
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
       OutputJson.createDir(baseClonePath);
 
-      const clientStatus = new Map<string, 'active' | 'downgraded' | 'no_release' | 'unknown_error'>();
+      const clientStatus = new Map<string, 'active' | 'fixed' | 'downgraded' | 'no_release' | 'unknown_error'>();
       const clientTracks = new Map<string, ClientTrack>();
       targets.forEach((t: any) => {
         clientStatus.set(t.C_client, 'active');
@@ -735,6 +744,7 @@ async function runPartialMode(): Promise<void> {
           if (phaseName === 'release_3') track.R3_LibVer     = currentLibVer || '-';
 
           if (currentStatus !== 'active') {
+            // 'fixed' は前フェーズで修正済み → カウントせずスキップ
             if (currentStatus === 'downgraded')    downgradeCount++;
             if (currentStatus === 'no_release')    noReleaseCount++;
             if (currentStatus === 'unknown_error') unknownErrorCount++;
@@ -776,13 +786,17 @@ async function runPartialMode(): Promise<void> {
           if      (st === 'downgraded')    statusStr = 'Downgraded (Rolled Back)';
           else if (st === 'no_release')    statusStr = 'No Release';
           else if (st === 'unknown_error') statusStr = 'Unknown Error';
+          else if (st === 'fixed')         statusStr = 'Fixed (Impl Changed)';
           else if (st === 'active') {
             const destPath = path.resolve(absCloneDir, item.C_client);
-            statusStr = !fs.existsSync(destPath)
-              ? 'Clone Failed'
-              : detectedClients.has(item.C_client)
-                ? 'Not Fixed (Pattern Detected)'
-                : 'Fixed (Impl Changed)';
+            if (!fs.existsSync(destPath)) {
+              statusStr = 'Clone Failed';
+            } else if (detectedClients.has(item.C_client)) {
+              statusStr = 'Not Fixed (Pattern Detected)';
+            } else {
+              statusStr = 'Fixed (Impl Changed)';
+              clientStatus.set(item.C_client, 'fixed'); // 後続フェーズで再カウントしない
+            }
           }
           if (phaseName === 'update')    track.Update_Status = statusStr;
           if (phaseName === 'release_1') track.R1_Status     = statusStr;
