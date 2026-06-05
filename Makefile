@@ -40,7 +40,6 @@ verhist-partial: ## verHist.ts を partial モードで実行
 # ---------------------------------------------------------------
 # パターン検出フェーズ (detect.ts)
 # ---------------------------------------------------------------
-# 例: make detect-full DETECT_MODE=1
 # make detect-full DETECT_MODE=0
 detect-full: ## detect.ts を full モードで実行 (DETECT_MODE=0/1/2)
 	cd $(SRCDIR) && $(TSN) detect.ts full $(DETECT_MODE)

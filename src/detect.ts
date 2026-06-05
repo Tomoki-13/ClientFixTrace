@@ -36,13 +36,17 @@ const CONFIG = {
   // ===== Full モード設定 =====
   FULL: {
     // 抽出フェーズで出力された valid_clone_summary.csv のパス
-    CLONE_SUMMARY_CSV: '../output/v2/versionData/2026-04-26-01-52-52-all/valid_clone_summary.csv',
+    CLONE_SUMMARY_CSV: '../datasets/analysis_target/verdata/2026-05-18-15-14-29/valid_clone_summary.csv',
     // 各ライブラリの version_history.json が格納されているルートディレクトリ
     VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-05-18-15-14-29',
     // R-BC 解析結果ルート (mode 0/1/2 それぞれの日付フォルダを指定)
     RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
     RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
     RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
+    // 使用する RBC パターンの種別
+    //   standard   : createPattern / detectByPattern (通常)
+    //   no_unknown : createPattern_no_unknown / detectByPattern_no_unknown (unknown型除外・条件厳格)
+    VARIANT: 'standard' as 'standard' | 'no_unknown',
     // クライアントリポジトリの永続キャッシュ
     SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
@@ -65,6 +69,10 @@ const CONFIG = {
     RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
     RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
     RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
+    // 使用する RBC パターンの種別
+    //   standard   : createPattern / detectByPattern (通常)
+    //   no_unknown : createPattern_no_unknown / detectByPattern_no_unknown (unknown型除外・条件厳格)
+    VARIANT: 'standard' as 'standard' | 'no_unknown',
     // クライアントリポジトリの永続キャッシュ
     SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
@@ -176,6 +184,11 @@ async function runFullMode(): Promise<void> {
     StatusBar.finish();
     return;
   }
+  const suffix = C.VARIANT === 'no_unknown' ? '_no_unknown' : '';
+  const cpDir = `createPattern${suffix}`;
+  const dpDir = `detectByPattern${suffix}`;
+  const modeDir = (['method', 'type-method', 'type-method-object'] as const)[DETECT_MODE];
+  const resultDir = path.resolve(C.RESULT_BASE_DIR, modeDir);
 
   // CSV ファイルのパス解決
   let cloneSummaryPath = C.CLONE_SUMMARY_CSV;
@@ -193,7 +206,7 @@ async function runFullMode(): Promise<void> {
   if (taskList.length === 0) { StatusBar.finish(); return; }
 
   const dateStr = OutputJson.formatDateTime(new Date()) + '-all';
-  const summaryOutDir = path.resolve(C.RESULT_BASE_DIR, dateStr, 'specific-commits');
+  const summaryOutDir = path.resolve(resultDir, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExtendedExecutionStat[] = [];
@@ -249,7 +262,8 @@ async function runFullMode(): Promise<void> {
       const rbcTargetDir = path.resolve(rbcRoot, `${libName}_${verKey}`);
       if (!fs.existsSync(rbcTargetDir)) continue;
 
-      const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
+      const localRbcFiles = (await GetAllFiles.getRecursively(rbcTargetDir))
+        .filter(f => f.includes(`/${cpDir}/`) || f.includes(`/${dpDir}/`));
       const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
       const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
       const loadedPatterns = loadPatterns(localRbcFiles, DETECT_MODE);
@@ -319,7 +333,7 @@ async function runFullMode(): Promise<void> {
       const { patterns } = loadedPatterns;
       const baseFolderName = `${libName}-${postVersion}_${targetState}`;
       const baseClonePath = path.resolve(C.BASE_CLONE_DIR, baseFolderName);
-      const baseResultPath = path.resolve(C.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
+      const baseResultPath = path.resolve(resultDir, dateStr, 'results', baseFolderName);
 
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
       OutputJson.createDir(baseClonePath);
@@ -488,9 +502,9 @@ async function runFullMode(): Promise<void> {
   }
 
   StatusBar.finish();
-  CsvHandler.writeFullExecutionStats(executionStats, C.RESULT_BASE_DIR, dateStr);
-  CsvHandler.writeClientTracks(allClientTracks, C.RESULT_BASE_DIR, dateStr);
-  CsvHandler.writeExcludedClients(allExcludedClients, C.RESULT_BASE_DIR, dateStr);
+  CsvHandler.writeFullExecutionStats(executionStats, resultDir, dateStr);
+  CsvHandler.writeClientTracks(allClientTracks, resultDir, dateStr);
+  CsvHandler.writeExcludedClients(allExcludedClients, resultDir, dateStr);
 }
 
 // ==========================================
@@ -507,6 +521,11 @@ async function runPartialMode(): Promise<void> {
     StatusBar.finish();
     return;
   }
+  const suffix = C.VARIANT === 'no_unknown' ? '_no_unknown' : '';
+  const cpDir = `createPattern${suffix}`;
+  const dpDir = `detectByPattern${suffix}`;
+  const modeDir = (['method', 'type-method', 'type-method-object'] as const)[DETECT_MODE];
+  const resultDir = path.resolve(C.RESULT_BASE_DIR, modeDir);
 
   if (!fs.existsSync(C.TASK_LIST_PATH)) {
     console.error(`[Error] ${C.TASK_LIST_PATH} は Partial モードで必須です。`);
@@ -520,7 +539,7 @@ async function runPartialMode(): Promise<void> {
   if (rawTaskList.length === 0) { StatusBar.finish(); return; }
 
   const dateStr = OutputJson.formatDateTime(new Date()) + '-partial';
-  const summaryOutDir = path.resolve(C.RESULT_BASE_DIR, dateStr, 'specific-commits');
+  const summaryOutDir = path.resolve(resultDir, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExtendedExecutionStat[] = [];
@@ -573,7 +592,8 @@ async function runPartialMode(): Promise<void> {
       const rbcTargetDir = path.resolve(rbcRoot, `${libName}_${verKey}`);
       if (!fs.existsSync(rbcTargetDir)) continue;
 
-      const localRbcFiles = await GetAllFiles.getRecursively(rbcTargetDir);
+      const localRbcFiles = (await GetAllFiles.getRecursively(rbcTargetDir))
+        .filter(f => f.includes(`/${cpDir}/`) || f.includes(`/${dpDir}/`));
       const successDetectFile = localRbcFiles.find(f => f.endsWith('success_detect.json'));
       const failureDetectFile = localRbcFiles.find(f => f.endsWith('failure_detect.json'));
       const loadedPatterns = loadPatterns(localRbcFiles, DETECT_MODE);
@@ -639,7 +659,7 @@ async function runPartialMode(): Promise<void> {
       const { patterns } = loadedPatterns;
       const baseFolderName = `${libName}-${postVersion}_${targetState}`;
       const baseClonePath = path.resolve(C.BASE_CLONE_DIR, baseFolderName);
-      const baseResultPath = path.resolve(C.RESULT_BASE_DIR, dateStr, 'results', baseFolderName);
+      const baseResultPath = path.resolve(resultDir, dateStr, 'results', baseFolderName);
 
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
       OutputJson.createDir(baseClonePath);
@@ -794,9 +814,9 @@ async function runPartialMode(): Promise<void> {
   }
 
   StatusBar.finish();
-  CsvHandler.writeFullExecutionStats(executionStats, C.RESULT_BASE_DIR, dateStr);
-  CsvHandler.writeClientTracks(allClientTracks, C.RESULT_BASE_DIR, dateStr);
-  CsvHandler.writeExcludedClients(allExcludedClients, C.RESULT_BASE_DIR, dateStr);
+  CsvHandler.writeFullExecutionStats(executionStats, resultDir, dateStr);
+  CsvHandler.writeClientTracks(allClientTracks, resultDir, dateStr);
+  CsvHandler.writeExcludedClients(allExcludedClients, resultDir, dateStr);
 }
 
 (async () => {
