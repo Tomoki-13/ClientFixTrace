@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { specificCommit } from "../../R-BC/src/types/specificCommit";
-import { getAllFilesRecursively } from "../../R-BC/src/utils/getAllFiles";
-import { cloneRepoWithCommit } from "../../R-BC/src/utils/cloneRepoWithCommit";
+import { specificCommit } from "../../../R-BC/src/types/specificCommit";
+import { getAllFilesRecursively } from "../../../R-BC/src/utils/getAllFiles";
+import { cloneRepoWithCommit } from "../../../R-BC/src/utils/cloneRepoWithCommit";
 import { execSync } from 'child_process';
 import output_json from "../utils/output_json";
 

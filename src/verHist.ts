@@ -24,6 +24,12 @@ interface TrackingSummary {
 }
 
 // ==========================================
+// 実行 ID: Meta Makefile からの BCPG_RUN_ID があればそれを使用、なければ実行時に生成
+// 出力は outputs/history/ClientFixTrace/verHist/<RUN_ID>/ に書き、Meta Makefile が outputs/latest/ClientFixTrace/ にコピーする
+// ==========================================
+const RUN_ID: string = process.env.BCPG_RUN_ID ?? OutputJson.formatDateTime(new Date());
+
+// ==========================================
 // INPUT: 実行設定
 // ==========================================
 const CONFIG = {
@@ -33,14 +39,17 @@ const CONFIG = {
    */
   DEFAULT_MODE: 'full' as 'full' | 'partial',
 
+  // 入出力パスは親ディレクトリ（BCPatternGen メタリポ）配下を参照する
+  // 単体実行は現在サポートされない（README 参照）
+
   // ===== 共通設定 =====
-  testResultPath: '../datasets/test_result.json',
+  testResultPath: '../../datasets/test_result.json',
 
   // ===== Full モード固有設定 =====
   FULL: {
     /** 空文字の場合は test_result.json から全件自動抽出 */
     myDataPath: '',
-    outputBaseDir: '../output/verHist',
+    outputBaseDir: `../../outputs/history/ClientFixTrace/verHist/${RUN_ID}`,
     /** 特定ライブラリのみに絞る場合に指定 (空文字=全件) */
     targetLibrary: '',
     runMode: 'full' as InternalRunMode,
@@ -66,12 +75,12 @@ const CONFIG = {
   // ===== Partial モード固有設定 =====
   PARTIAL: {
     /** myDataPath は Partial モードで必須 */
-    myDataPath: '../datasets/targets.json',
+    myDataPath: '../../datasets/targets.json',
     /**
      * Full モードの出力と同じルートを指定すれば detect.ts PARTIAL.VERSION_DATA_DIR と共有できる。
-     * 分けたい場合は '../output/partVerHist' などに変更する。
+     * 分けたい場合は '../../outputs/latest/ClientFixTrace/partVerHist' などに変更する。
      */
-    outputBaseDir: '../output/verHist',
+    outputBaseDir: `../../outputs/history/ClientFixTrace/verHist/${RUN_ID}`,
     runMode: 'full' as InternalRunMode,
   }
 };
@@ -207,7 +216,7 @@ async function runFullMode(): Promise<void> {
   const C = CONFIG.FULL;
   const outputBaseDir = C.outputBaseDir;
 
-  let dateStr = OutputJson.formatDateTime(new Date());
+  let dateStr = RUN_ID;
   let libVersionRanges: { libName: string; preVersion: string; postVersion: string }[] = [];
   const suffix = C.DEBUG_MODE ? '-debug' : '';
 
@@ -316,7 +325,7 @@ async function runFullMode(): Promise<void> {
 
     // リリース履歴を付加 (フォールバックあり)
     const masterHistory = rawMasterHistory.map(clientData => {
-      const repoPath = WorkspaceManager.resolveSourcePath('../clonedata/clientRepos', libName, clientData.C_client);
+      const repoPath = WorkspaceManager.resolveSourcePath('../../clonedata/clientRepos', libName, clientData.C_client);
       const enrichedVerList = clientData.verList.map((v: any) => ({
         ...v,
         C_releases: repoPath ? getReleaseHistory(repoPath, libName, v.C_commitID) : []
@@ -462,7 +471,7 @@ async function runPartialMode(): Promise<void> {
 
     // リリース履歴を付加 (フォールバックあり)
     const masterHistory = rawMasterHistory.map(clientData => {
-      const repoPath = WorkspaceManager.resolveSourcePath('../clonedata/clientRepos', libName, clientData.C_client);
+      const repoPath = WorkspaceManager.resolveSourcePath('../../clonedata/clientRepos', libName, clientData.C_client);
       const enrichedVerList = clientData.verList.map((v: any) => ({
         ...v,
         C_releases: repoPath ? getReleaseHistory(repoPath, libName, v.C_commitID) : []

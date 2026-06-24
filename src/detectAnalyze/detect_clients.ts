@@ -1,10 +1,10 @@
 import path from "path";
 import fs from 'fs';
-import output_json from "../../R-BC/src/utils/output_json";
-import { DetectionOutput } from "../../R-BC/src/types/outputTypes";
-import { ExtractFunctionCallsResult } from "../../R-BC/src/types/ExtractFunctionCallsResult";
-import { detectByPattern } from "../../R-BC/src/core/detectByPattern";
-import patternConversion from "../../R-BC/src/patternOperations/patternConversion";
+import output_json from "../../../R-BC/src/utils/output_json";
+import { DetectionOutput } from "../../../R-BC/src/types/outputTypes";
+import { ExtractFunctionCallsResult } from "../../../R-BC/src/types/ExtractFunctionCallsResult";
+import { detectByPattern } from "../../../R-BC/src/core/detectByPattern";
+import patternConversion from "../../../R-BC/src/patternOperations/patternConversion";
 
 type dataType = {
   libName: string;

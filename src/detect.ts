@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
-import { detectByPattern } from "../R-BC/src/core/detectByPattern";
+import { detectByPattern } from "../../R-BC/src/core/detectByPattern";
 
 import StatusBar from "./utils/statusBar";
 import TargetCommits from "./analysis/targetCommits";
@@ -14,6 +14,12 @@ import CsvHandler from "./utils/csvHandler";
 
 import { ExtractFunctionCallsResult, ExtendedDetectionOutput } from "./types/RbcTypes";
 import { ExecutionStat, ClientTrack, ExcludedClient } from "./types/AnalysisTypes";
+
+// ==========================================
+// 実行 ID: Meta Makefile からの BCPG_RUN_ID があればそれを使用、なければ実行時に生成
+// 出力は outputs/history/ClientFixTrace/detect/<RUN_ID>/ に書き、Meta Makefile が outputs/latest/ClientFixTrace/ にコピーする
+// ==========================================
+const RUN_ID: string = process.env.BCPG_RUN_ID ?? OutputJson.formatDateTime(new Date());
 
 // ==========================================
 // INPUT: 実行設定
@@ -33,26 +39,29 @@ const CONFIG = {
    */
   DEFAULT_DETECT_MODE: 0 as 0 | 1 | 2,
 
+  // 入出力パスは親ディレクトリ（BCPatternGen メタリポ）配下を参照する
+  // 単体実行は現在サポートされない（README 参照）
+
   // ===== Full モード設定 =====
   FULL: {
     // 抽出フェーズで出力された valid_clone_summary.csv のパス
-    CLONE_SUMMARY_CSV: '../datasets/analysis_target/verdata/2026-05-18-15-14-29/valid_clone_summary.csv',
+    CLONE_SUMMARY_CSV: '../../outputs/latest/ClientFixTrace/verHist/versionData/2026-05-18-15-14-29/valid_clone_summary.csv',
     // 各ライブラリの version_history.json が格納されているルートディレクトリ
-    VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-05-18-15-14-29',
-    // R-BC 解析結果ルート (mode 0/1/2 それぞれの日付フォルダを指定)
-    RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
-    RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
-    RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
+    VERSION_DATA_DIR: '../../outputs/latest/ClientFixTrace/verHist/versionData/2026-05-18-15-14-29',
+    // R-BC 解析結果ルート (latest を参照。過去履歴を使う場合は outputs/history/R-BC/<mode>/<run_id> を指定)
+    RBC_M0: '../../outputs/latest/R-BC/method',
+    RBC_M1: '../../outputs/latest/R-BC/type-method',
+    RBC_M2: '../../outputs/latest/R-BC/type-method-object',
     // 使用する RBC パターンの種別
     //   standard   : createPattern / detectByPattern (通常)
     //   no_unknown : createPattern_no_unknown / detectByPattern_no_unknown (unknown型除外・条件厳格)
     VARIANT: 'standard' as 'standard' | 'no_unknown',
     // クライアントリポジトリの永続キャッシュ
-    SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
+    SOURCE_CLIENT_REPOS: '../../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
-    BASE_CLONE_DIR: '../clonedata/analysis_temp_repos',
+    BASE_CLONE_DIR: '../../clonedata/analysis_temp_repos',
     // 最終サマリーCSV・詳細JSONの出力先
-    RESULT_BASE_DIR: '../output/detect',
+    RESULT_BASE_DIR: `../../outputs/history/ClientFixTrace/detect/${RUN_ID}`,
     // 対象ステート (success / failure の両方を処理)
     STATES: ['success', 'failure'] as const,
     // update の後に追跡する後続リリース数 (0〜3)
@@ -62,23 +71,23 @@ const CONFIG = {
   // ===== Partial モード設定 =====
   PARTIAL: {
     // 処理対象タスク一覧 (必須)
-    TASK_LIST_PATH: '../datasets/targets.json',
+    TASK_LIST_PATH: '../../datasets/targets.json',
     // verHist の出力ルート (full / partial どちらの出力でも可)
-    VERSION_DATA_DIR: '../datasets/analysis_target/verdata/2026-05-18-15-14-29',
-    // R-BC 解析結果ルート (mode 0/1/2 それぞれの日付フォルダを指定)
-    RBC_M0: '../datasets/analysis_target/rbc_data/method/2026-05-19-11-03-11',
-    RBC_M1: '../datasets/analysis_target/rbc_data/type-method/2026-05-19-11-23-18',
-    RBC_M2: '../datasets/analysis_target/rbc_data/type-method-object/2026-05-19-11-44-37',
+    VERSION_DATA_DIR: '../../outputs/latest/ClientFixTrace/verHist/versionData/2026-05-18-15-14-29',
+    // R-BC 解析結果ルート (latest を参照。過去履歴を使う場合は outputs/history/R-BC/<mode>/<run_id> を指定)
+    RBC_M0: '../../outputs/latest/R-BC/method',
+    RBC_M1: '../../outputs/latest/R-BC/type-method',
+    RBC_M2: '../../outputs/latest/R-BC/type-method-object',
     // 使用する RBC パターンの種別
     //   standard   : createPattern / detectByPattern (通常)
     //   no_unknown : createPattern_no_unknown / detectByPattern_no_unknown (unknown型除外・条件厳格)
     VARIANT: 'standard' as 'standard' | 'no_unknown',
     // クライアントリポジトリの永続キャッシュ
-    SOURCE_CLIENT_REPOS: '../clonedata/clientRepos',
+    SOURCE_CLIENT_REPOS: '../../clonedata/clientRepos',
     // 一時作業ディレクトリ (解析後に削除される)
-    BASE_CLONE_DIR: '../clonedata/analysis_temp_repos',
+    BASE_CLONE_DIR: '../../clonedata/analysis_temp_repos',
     // 最終サマリーCSV・詳細JSONの出力先
-    RESULT_BASE_DIR: '../output/detect',
+    RESULT_BASE_DIR: `../../outputs/history/ClientFixTrace/detect/${RUN_ID}`,
     // 対象ステート (success / failure の両方を処理。ファイルがなければスキップ)
     STATES: ['success', 'failure'] as const,
     // update の後に追跡する後続リリース数 (0〜3)
@@ -209,7 +218,7 @@ async function runFullMode(): Promise<void> {
     .filter(t => t.SuccessCloned > 0 || t.FailureCloned > 0);
   if (taskList.length === 0) { StatusBar.finish(); return; }
 
-  const dateStr = OutputJson.formatDateTime(new Date()) + '-all';
+  const dateStr = RUN_ID + '-all';
   const summaryOutDir = path.resolve(resultDir, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
@@ -547,7 +556,7 @@ async function runPartialMode(): Promise<void> {
   }[];
   if (rawTaskList.length === 0) { StatusBar.finish(); return; }
 
-  const dateStr = OutputJson.formatDateTime(new Date()) + '-partial';
+  const dateStr = RUN_ID + '-partial';
   const summaryOutDir = path.resolve(resultDir, dateStr, 'specific-commits');
   OutputJson.createDir(summaryOutDir);
 
