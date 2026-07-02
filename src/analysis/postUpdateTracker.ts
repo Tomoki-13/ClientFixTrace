@@ -38,17 +38,22 @@ export function trackPostUpdate(targets: any[], verHistory: any[], postVersion: 
         continue;
       }
 
+      // postVersion = 破壊的更新で採用した版
+      // 後続リリース時点の使用版 relLibVer と比較し、クライアントのその後の振る舞いを判定
+      //   relLibVer <  post … 古い版へ戻した        → Downgraded（更新の取り下げ）
+      //   relLibVer >  post … さらに新しい版へ進んだ → Upgraded Further（更新の継続）
+      //   relLibVer == post … 採用した版のまま       → Maintained（更新の定着）
       const relLibVer = rel.L_libVersion;
       const comp = compareVer(relLibVer, postVersion);
 
       let statusStr = "";
-      if (comp === 'less') {
+      if (comp === 'less') {            // 古い版に戻した
         statusStr = `${relLibVer} (Downgraded)`;
         hasDowngrade = true;
-      } else if (comp === 'greater') {
+      } else if (comp === 'greater') {  // さらに新しい版へ
         statusStr = `${relLibVer} (Upgraded Further)`;
         hasFurtherUpdate = true;
-      } else if (comp === 'equal') {
+      } else if (comp === 'equal') {    // 採用した版のまま維持
         statusStr = `${relLibVer} (Maintained)`;
       } else {
         statusStr = `${relLibVer} (Unknown)`;
@@ -61,12 +66,13 @@ export function trackPostUpdate(targets: any[], verHistory: any[], postVersion: 
       });
     }
 
+    // 後続3リリース全体での最終評価（ダウングレード優先 → 更なる更新 → 維持 → リリース無し）
     if (hasDowngrade) {
-      trackingResult.finalStatus = "downgraded_eventually";
+      trackingResult.finalStatus = "downgraded_eventually"; // 1回でも戻した
     } else if (hasFurtherUpdate) {
-      trackingResult.finalStatus = "upgraded_eventually";
+      trackingResult.finalStatus = "upgraded_eventually";   // 戻さず、さらに上げた
     } else if (releases.length > 0 && trackingResult.releases[0] !== "NO_RELEASE_FOUND") {
-      trackingResult.finalStatus = "maintained";
+      trackingResult.finalStatus = "maintained";            // 採用版を維持し続けた
     }
 
     return trackingResult;
