@@ -244,6 +244,7 @@ async function runFullMode(): Promise<void> {
   OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExtendedExecutionStat[] = [];
+  const finalStats: any[] = []; // クライアント最終状態からのクリーン集計 (condensed 用)
   const allClientTracks: ClientTrack[] = [];
   const allExcludedClients: ExcludedClient[] = [];
   const totalSteps = taskList.length * C.STATES.length;
@@ -535,13 +536,27 @@ async function runFullMode(): Promise<void> {
         await runAnalysis(`release_${i + 1}`, i);
       }
 
+      // クライアント最終状態(排他)からクリーンに集計: Updated = Fixed + Downgraded + NotFixed
+      const tally: Record<string, number> = { fixed: 0, downgraded: 0, no_release: 0, unknown_error: 0, active: 0 };
+      for (const st of clientStatus.values()) tally[st] = (tally[st] ?? 0) + 1;
+      finalStats.push({
+        library: libName, preVersion, postVersion, state: targetState,
+        rbcDetected: targetState === 'success' ? rbcPatternCountSuccess : rbcPatternCountFailure,
+        updated: targets.length,
+        fixed: tally.fixed,
+        downgraded: tally.downgraded,
+        notFixed: tally.active + tally.no_release + tally.unknown_error,
+        notFixedStillDetected: tally.active,
+        notFixedNoRelease: tally.no_release,
+        notFixedUnknownError: tally.unknown_error,
+      });
       for (const track of clientTracks.values()) allClientTracks.push(track);
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
     }
   }
 
   StatusBar.finish();
-  CsvHandler.writeFullExecutionStats(executionStats, resultDir, dateStr);
+  CsvHandler.writeFullExecutionStats(executionStats, finalStats, resultDir, dateStr);
   CsvHandler.writeClientTracks(allClientTracks, resultDir, dateStr);
   CsvHandler.writeExcludedClients(allExcludedClients, resultDir, dateStr);
 }
@@ -582,6 +597,7 @@ async function runPartialMode(): Promise<void> {
   OutputJson.createDir(summaryOutDir);
 
   const executionStats: ExtendedExecutionStat[] = [];
+  const finalStats: any[] = []; // クライアント最終状態からのクリーン集計 (condensed 用)
   const allClientTracks: ClientTrack[] = [];
   const allExcludedClients: ExcludedClient[] = [];
   const totalSteps = rawTaskList.length * C.STATES.length;
@@ -856,13 +872,27 @@ async function runPartialMode(): Promise<void> {
         await runAnalysis(`release_${i + 1}`, i);
       }
 
+      // クライアント最終状態(排他)からクリーンに集計: Updated = Fixed + Downgraded + NotFixed
+      const tally: Record<string, number> = { fixed: 0, downgraded: 0, no_release: 0, unknown_error: 0, active: 0 };
+      for (const st of clientStatus.values()) tally[st] = (tally[st] ?? 0) + 1;
+      finalStats.push({
+        library: libName, preVersion, postVersion, state: targetState,
+        rbcDetected: targetState === 'success' ? rbcPatternCountSuccess : rbcPatternCountFailure,
+        updated: targets.length,
+        fixed: tally.fixed,
+        downgraded: tally.downgraded,
+        notFixed: tally.active + tally.no_release + tally.unknown_error,
+        notFixedStillDetected: tally.active,
+        notFixedNoRelease: tally.no_release,
+        notFixedUnknownError: tally.unknown_error,
+      });
       for (const track of clientTracks.values()) allClientTracks.push(track);
       if (fs.existsSync(baseClonePath)) fs.rmSync(baseClonePath, { recursive: true, force: true });
     }
   }
 
   StatusBar.finish();
-  CsvHandler.writeFullExecutionStats(executionStats, resultDir, dateStr);
+  CsvHandler.writeFullExecutionStats(executionStats, finalStats, resultDir, dateStr);
   CsvHandler.writeClientTracks(allClientTracks, resultDir, dateStr);
   CsvHandler.writeExcludedClients(allExcludedClients, resultDir, dateStr);
 }
