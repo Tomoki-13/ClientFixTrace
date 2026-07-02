@@ -68,10 +68,45 @@ npm install
 以下のいずれかを実行
 make verhist-full
 make verhist-partial
-make verhist-rbc RBC_MODE=2   # RBC_MODE=0 method / 1 type-method / 2 type-method-object（既定 2）
+make verhist-rbc RBC_MODE=2   # 0 method / 1 type-method / 2 type-method-object / 1.5,2.5 各 no_unknown 版（既定 2）
 ```
 
-> `verhist-rbc` は `verHistFromRBC.ts` を実行する。`outputs/latest/R-BC/<mode>/<lib>_<cleanVer>/detectByPattern/{failure,success}_detect.json` の `detectedClients` を success/failure メンバーシップに使い、ドット付きの版は `datasets/targets.json` から読む。ライブラリ単位で全クライアントを union してから 1 回だけ抽出するため、同一クライアントを複数バージョンで重複調査しない（`verhist-full` と同じ仕組み）。先に R-BC を実行（例: `make rbc-obj`）しておくこと。
+> `verhist-rbc` は `verHistFromRBC.ts` を実行する。`outputs/latest/R-BC/<mode>/<lib>_<cleanVer>/detectByPattern/{failure,success}_detect.json` の `detectedClients` を success/failure 別に使い、ドット付きの版は `datasets/targets.json` から読む。ライブラリ単位で全クライアントを統合してから 1 回だけ抽出するため、同一クライアントを複数バージョンで重複調査しない（`verhist-full` と同じ仕組み）。先に R-BC を実行（例: `make rbc-obj`）しておくこと。
+
+#### 出力レイアウト
+
+全 verHist（full / partial / rbc-*）は共通レイアウト（`src/utils/verHistLayout.ts`）で出力する。
+**mode をトップに置く**（R-BC と統一）ことで開かなくても種別が分かる。
+`mode = full | partial | rbc-method | rbc-type-method | rbc-type-method-object`。
+
+`history` は RUN_ID 単位でアーカイブ:
+
+```
+outputs/history/ClientFixTrace/verHist/<mode>/<RUN_ID>/
+├── _summary/
+│     valid_clone_summary.csv / invalid_clone_summary.csv
+│     aggregate_tracking_summary.csv          # Maintained 等の集計
+├── _allHistory/
+│     <lib>_all_history.json
+└── <lib>@<post>/
+      ├── success/
+      │     version_history-success.json
+      │     post_update_tracking-success.json
+      │     result_pairs-success.json
+      │     sorted/{update,downgrade,same}.json
+      └── failure/   （同上, -failure）
+```
+
+`latest` は最新 RUN_ID の中身を `<mode>/` 直下へ展開（`<RUN_ID>` 階層は無し）:
+
+```
+outputs/latest/ClientFixTrace/verHist/<mode>/
+├── _summary/ … _allHistory/ … <lib>@<post>/{success,failure}/
+```
+
+- `detect.ts` の `VERSION_DATA_DIR` はこの `<mode>` ルート（例 `.../verHist/full`）を指す。
+- `aggregate_tracking_summary.csv` の `Maintained` = 更新後、追跡した後続3リリースの間その版を維持し続けたクライアント数。
+- 設計の詳細は `docs/DESIGN.md`（git 管理外）。
 
 ---
 
@@ -82,10 +117,40 @@ make verhist-rbc RBC_MODE=2   # RBC_MODE=0 method / 1 type-method / 2 type-metho
 | `make detect-full` | verHist-full の出力を対象に全件検出（success/failure 両ステート） |
 | `make detect-partial` | `datasets/targets.json` に指定したタスクのみ検出（単一ステート） |
 
+検出モード（`DETECT_MODE`、CLI 第2引数）:
+
+| mode | 内容 | 参照する R-BC 出力 |
+|---|---|---|
+| 0 | コードのみ（型なし広域マッチ） | `method/` |
+| 1 | コード + 型完全一致 | `type-method/` |
+| **1.5** | 1 と同じマッチングの **no_unknown 厳格版** | `type-method/` の `*_no_unknown` |
+| 2 | コード + 型一致 + object キー | `type-method-object/` |
+| **2.5** | 2 と同じマッチングの **no_unknown 厳格版** | `type-method-object/` の `*_no_unknown` |
+
+> **`.5` モード（1.5 / 2.5）について**: R-BC は typed モード（DETECTION_MODE 1/2）実行時に
+> `<lib>_<ver>/{createPattern,detectByPattern}_no_unknown/` を併せて出力する（unknown 型だけの呼び出し
+> パターンを除いた集合）。`.5` はマッチング自体は整数モードと同一で、参照サブディレクトリを `_no_unknown`
+> 側に切り替えるだけ。**R-BC 側に新モードは不要**で、`make rbc-type`/`make rbc-obj`（DETECTION_MODE=1/2）で
+> 生成済みの出力をそのまま使う。出力は `…-no-unknown` という専用フォルダに分離される。
+
 ```sh
 make detect-full       # 設定: src/detect.ts CONFIG.FULL
 make detect-partial    # 設定: src/detect.ts CONFIG.PARTIAL
 ```
+
+#### 出力レイアウト（full / partial を分離）
+
+detect も verHist と同様 **runMode をトップに**置き、full と partial の結果が混ざらない:
+
+```
+outputs/{history,latest}/ClientFixTrace/detect/<full|partial>/[<RUN_ID>/]<検出mode>/...
+  検出mode = method | type-method | type-method-object  (DETECT_MODE 0/1/2)
+```
+
+- `history` は `<runMode>/<RUN_ID>/`、`latest` は `<runMode>/` 直下へ展開。
+- **partial フォールバック**: `CONFIG.PARTIAL.VERSION_DATA_DIR`（`verHist/partial`）に該当履歴が無い場合、
+  `VERSION_DATA_DIR_FALLBACK`（`verHist/full`）を参照する。full は partial を包含するため、
+  verHist を full でだけ回していれば partial 検出をそのまま実行できる（空文字で無効化）。
 
 ## R-BC との関係
 

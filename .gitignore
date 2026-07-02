@@ -1,6 +1,7 @@
 node_modules
 .DS_Store
 preDev
+docs/
 package-lock.json
 clientRepos
 client_update
